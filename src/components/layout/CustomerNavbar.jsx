@@ -26,6 +26,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { useTheme } from '@/context/ThemeContext';
+import { VoiceNavigation } from '@/components/voice/VoiceNavigation';
 
 export function CustomerNavbar({ onOpenCartDrawer, onOpenAIAssistant }) {
   const router = useRouter();
@@ -154,6 +155,12 @@ export function CustomerNavbar({ onOpenCartDrawer, onOpenAIAssistant }) {
           >
             {dark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
           </button>
+
+          {/* Role-Aware Voice Navigation */}
+          <VoiceNavigation
+            onOpenAIAssistant={onOpenAIAssistant}
+            onOpenCartDrawer={onOpenCartDrawer}
+          />
 
           {/* AI Shopping Assistant ("Ask AI Grocer") */}
           <button

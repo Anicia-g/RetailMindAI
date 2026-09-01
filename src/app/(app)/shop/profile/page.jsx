@@ -18,6 +18,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Badge } from '@/components/common/Badge';
+import { WhatsAppConsentToggle } from '@/components/customer/WhatsAppConsentToggle';
+import { OTPVerificationModal } from '@/components/otp/OTPVerificationModal';
 
 export default function ShopProfilePage() {
   const { user } = useAuth();
@@ -30,11 +32,17 @@ export default function ShopProfilePage() {
   const [prefDairy, setPrefDairy] = useState(true);
   const [prefEco, setPrefEco] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [isOtpOpen, setIsOtpOpen] = useState(false);
 
   const handleSave = (e) => {
     e.preventDefault();
+    // Trigger security OTP verification for sensitive contact/address changes
+    setIsOtpOpen(true);
+  };
+
+  const handleOtpVerified = () => {
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setTimeout(() => setSaved(false), 4000);
   };
 
   return (
@@ -172,19 +180,38 @@ export default function ShopProfilePage() {
             </div>
           </div>
 
+          {/* WhatsApp Notification Preference */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <WhatsAppConsentToggle
+              customerId={user?.id || 'usr-cust-003'}
+              phoneNumber={phone}
+            />
+          </div>
+
           <div className="pt-2 flex justify-end">
             <Button
               type="submit"
               variant="primary"
               size="md"
               icon={Save}
-              className="bg-emerald-600 hover:bg-emerald-700 font-bold"
+              className="bg-emerald-600 hover:bg-emerald-700 font-bold cursor-pointer"
             >
-              Save Profile
+              Save Profile (Verify with OTP)
             </Button>
           </div>
         </form>
       </div>
+
+      {/* Security OTP Verification Modal */}
+      <OTPVerificationModal
+        isOpen={isOtpOpen}
+        onClose={() => setIsOtpOpen(false)}
+        onSuccess={handleOtpVerified}
+        identifier={phone}
+        purpose="PROFILE_UPDATE"
+        title="Confirm Profile Update"
+        description="To protect your delivery address and contact info, enter the code sent to:"
+      />
     </div>
   );
 }

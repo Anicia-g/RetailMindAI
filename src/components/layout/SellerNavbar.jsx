@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { useTheme } from '@/context/ThemeContext';
 import { SearchBar } from '@/components/common/SearchBar';
+import { VoiceNavigation } from '@/components/voice/VoiceNavigation';
 
 export function SellerNavbar({ onOpenMobileSidebar, onOpenAIAssistant, onOpenRecordSale }) {
   const router = useRouter();
@@ -164,6 +165,9 @@ export function SellerNavbar({ onOpenMobileSidebar, onOpenAIAssistant, onOpenRec
         >
           {dark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
         </button>
+
+        {/* Role-Aware Voice Navigation */}
+        <VoiceNavigation onOpenAIAssistant={onOpenAIAssistant} />
 
         {/* AI Assistant Trigger Button (Seller Co-Pilot) */}
         <button

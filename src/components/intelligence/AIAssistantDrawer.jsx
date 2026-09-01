@@ -2,9 +2,23 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { X, Send, Bot, Sparkles, ArrowRight, ShoppingCart, ShoppingBag, TrendingUp } from 'lucide-react';
+import {
+  X,
+  Send,
+  Bot,
+  Sparkles,
+  ArrowRight,
+  ShoppingCart,
+  ShoppingBag,
+  TrendingUp,
+  Mic,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { roleAIPrompts, getAIResponse } from '@/data/aiResponses';
 import { ROLES } from '@/lib/auth';
 
@@ -60,9 +74,23 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
   const [inputQuery, setInputQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
+  const synth = useSpeechSynthesis();
+  const speech = useSpeechRecognition({
+    onResult: (spokenText) => {
+      setInputQuery((prev) => (prev ? `${prev} ${spokenText}` : spokenText));
+    },
+  });
+
   useEffect(() => {
     setMessages([getWelcomeMessage(currentRole)]);
   }, [currentRole]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      synth.stop();
+      speech.stopListening();
+    }
+  }, [isOpen, synth, speech]);
 
   if (!isOpen) return null;
 
@@ -195,6 +223,31 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-200 dark:border-slate-700'
                 }`}
               >
+                {msg.sender === 'ai' && (
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      {currentTheme.title}
+                    </span>
+                    {synth.isSupported && (
+                      <button
+                        type="button"
+                        onClick={() => synth.speak(msg.text, msg.id)}
+                        title={synth.currentlyPlayingId === msg.id ? 'Stop reading aloud' : 'Read response aloud'}
+                        className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                          synth.currentlyPlayingId === msg.id
+                            ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 font-bold'
+                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {synth.currentlyPlayingId === msg.id ? (
+                          <VolumeX className="w-3.5 h-3.5" />
+                        ) : (
+                          <Volume2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="whitespace-pre-line prose dark:prose-invert prose-sm">
                   {msg.text}
                 </div>
@@ -247,6 +300,23 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
           </div>
         </div>
 
+        {/* Live speech recognition status indicator */}
+        {speech.isListening && (
+          <div className="px-4 py-1.5 bg-rose-500/10 border-t border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span>Listening... Speak your question</span>
+            </div>
+            <button
+              type="button"
+              onClick={speech.stopListening}
+              className="text-[11px] font-bold underline cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <form
@@ -267,8 +337,34 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
                   ? 'Ask about shift sales, low stock items, best sellers...'
                   : 'Ask about sales anomalies, reorder POs, store performance...'
               }
-              className="flex-1 px-3.5 py-2 rounded-xl text-xs border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+              className="flex-1 px-3.5 py-2 rounded-xl text-xs border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             />
+            {/* Speech-To-Text Microphone Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (speech.isListening) {
+                  speech.stopListening();
+                } else {
+                  speech.startListening();
+                }
+              }}
+              title={
+                !speech.isSupported
+                  ? 'Speech recognition not supported in browser'
+                  : speech.isListening
+                  ? '🔴 Listening... Click to stop'
+                  : '🎙️ Speak your question'
+              }
+              className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+                speech.isListening
+                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30 animate-pulse'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+
             <button
               type="submit"
               disabled={!inputQuery.trim() || isTyping}

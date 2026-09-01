@@ -19,6 +19,7 @@ import { Button } from '@/components/common/Button';
 import { Select } from '@/components/common/Select';
 import { Input } from '@/components/common/Input';
 import { Badge } from '@/components/common/Badge';
+import { WhatsAppConsentToggle } from '@/components/customer/WhatsAppConsentToggle';
 
 export default function SettingsPage() {
   const {
@@ -349,6 +350,25 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Live Color Preview Card */}
+        <div
+          className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-xs transition-all shadow-xs"
+          style={{ backgroundColor: backgroundColor || 'transparent', color: fontColor || 'inherit' }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-bold uppercase tracking-wider text-[10px] opacity-75">Live Color Theme Preview</span>
+            <span className="font-mono text-[10px] opacity-75">Bg: {backgroundColor} | Font: {fontColor}</span>
+          </div>
+          <p className="font-medium leading-relaxed">
+            The RetailMind AI intelligence suite has calibrated your store operations. This font and background color preview reflects your customized interface theme.
+          </p>
+        </div>
+      </div>
+
+      {/* Section 5: Notification Preferences */}
+      <div className="space-y-2">
+        <WhatsAppConsentToggle customerId="user_settings" />
       </div>
 
       {/* Action Footer */}

@@ -47,7 +47,6 @@ export function SellerSidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onC
         { labelKey: 'sellerBestSellers', href: '/seller/best-sellers', icon: Flame },
         { labelKey: 'sellerReports', href: '/seller/reports', icon: FileSpreadsheet },
         { labelKey: 'sellerProfile', href: '/seller/profile', icon: User },
-        { labelKey: 'settings', href: '/settings', icon: Settings },
       ],
     },
   ];

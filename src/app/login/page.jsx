@@ -14,11 +14,13 @@ import {
   Store,
   ShoppingBag,
   CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { getRoleHomeRoute, ROLES } from '@/lib/auth';
 import { Button } from '@/components/common/Button';
+import { OTPVerificationModal } from '@/components/otp/OTPVerificationModal';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,6 +32,17 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [isOtpLoginOpen, setIsOtpLoginOpen] = useState(false);
+
+  const handleOtpLoginSuccess = async () => {
+    try {
+      const result = await login(email, password || 'admin1234');
+      const destination = getRoleHomeRoute(result.user?.role);
+      router.push(destination);
+    } catch (err) {
+      setError(err.message || 'OTP authentication failed.');
+    }
+  };
 
   const demoAccounts = [
     {
@@ -225,8 +238,30 @@ export default function LoginPage() {
           >
             {submitting ? t('loggingIn') : t('login')}
           </Button>
+
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setIsOtpLoginOpen(true)}
+              className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Verify & Login via 6-Digit OTP</span>
+            </button>
+          </div>
         </form>
       </div>
+
+      {/* Login OTP Modal */}
+      <OTPVerificationModal
+        isOpen={isOtpLoginOpen}
+        onClose={() => setIsOtpLoginOpen(false)}
+        onSuccess={handleOtpLoginSuccess}
+        identifier={email}
+        purpose="LOGIN_VERIFICATION"
+        title="Account Security Verification"
+        description="We sent a 6-digit one-time password to your account:"
+      />
     </div>
   );
 }

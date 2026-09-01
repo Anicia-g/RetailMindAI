@@ -53,7 +53,6 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isMobileOpen, onCloseMo
         { labelKey: 'forecasting', href: '/forecasting', icon: TrendingUp, badge: 'ARIMA', badgeColor: 'bg-cyan-500 text-white' },
         { labelKey: 'aiAssistant', href: '/ai-assistant', icon: Bot, highlight: true },
         { labelKey: 'reports', href: '/reports', icon: FileSpreadsheet },
-        { labelKey: 'settings', href: '/settings', icon: Settings },
       ],
     },
   ];

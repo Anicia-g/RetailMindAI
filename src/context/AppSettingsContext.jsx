@@ -47,6 +47,11 @@ export function AppSettingsProvider({ children }) {
     root.style.setProperty('--app-font-color', currentSettings.fontColor);
     root.style.setProperty('--app-font-size', `${currentSettings.fontSize}px`);
 
+    if (document.body) {
+      document.body.style.backgroundColor = currentSettings.backgroundColor;
+      document.body.style.color = currentSettings.fontColor;
+    }
+
     if (isDark) {
       root.style.setProperty('--app-surface', '#1e293b');
       root.style.setProperty('--app-surface-secondary', '#172033');

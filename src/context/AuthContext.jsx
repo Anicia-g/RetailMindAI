@@ -117,13 +117,9 @@ export function AuthProvider({ children }) {
           }
         }
       } else {
-        // Default initialized demo session with Admin
-        const defaultAdmin = MOCK_USERS_DB[0];
-        const initialJwt = generateToken(defaultAdmin);
-        setUser(defaultAdmin);
-        setToken(initialJwt);
-        localStorage.setItem('retailmind_jwt_token', initialJwt);
-        localStorage.setItem('retailmind_user', JSON.stringify(defaultAdmin));
+        // Default unauthenticated on fresh load
+        setUser(null);
+        setToken(null);
       }
 
       // Hydrate cart & wishlist from localStorage if present

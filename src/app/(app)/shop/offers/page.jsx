@@ -11,15 +11,18 @@ import {
   Percent,
   Gift,
   ArrowRight,
+  MessageSquare,
 } from 'lucide-react';
 import { initialProducts } from '@/data/products';
 import { ProductCard } from '@/components/customer/ProductCard';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
+import { WhatsAppOfferModal } from '@/components/customer/WhatsAppOfferModal';
 
 export default function ShopOffersPage() {
   const [copiedCode, setCopiedCode] = useState('');
   const [products] = useState(initialProducts);
+  const [selectedOfferForWhatsApp, setSelectedOfferForWhatsApp] = useState(null);
 
   const discountedProducts = products
     .filter((p) => (p.discountPct && p.discountPct > 0) || (p.expiryDays && p.expiryDays <= 6))
@@ -102,8 +105,22 @@ export default function ShopOffersPage() {
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{c.desc}</p>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">{c.minOrder}</span>
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOfferForWhatsApp({
+                      title: c.title,
+                      code: c.code,
+                      discountPct: 15,
+                      reason: c.desc,
+                    })}
+                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Preview WhatsApp Alert"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>WhatsApp</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleCopyCode(c.code)}
@@ -145,6 +162,13 @@ export default function ShopOffersPage() {
           ))}
         </div>
       </div>
+
+      {/* WhatsApp Offer Notification Preview Modal */}
+      <WhatsAppOfferModal
+        isOpen={!!selectedOfferForWhatsApp}
+        onClose={() => setSelectedOfferForWhatsApp(null)}
+        offer={selectedOfferForWhatsApp}
+      />
     </div>
   );
 }

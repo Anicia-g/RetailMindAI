@@ -1,0 +1,284 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { X, Send, Bot, Sparkles, ArrowRight, ShoppingCart, ShoppingBag, TrendingUp } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useAppSettings } from '@/context/AppSettingsContext';
+import { roleAIPrompts, getAIResponse } from '@/data/aiResponses';
+import { ROLES } from '@/lib/auth';
+
+export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRole }) {
+  const router = useRouter();
+  const { user, role: contextRole } = useAuth();
+  const { t } = useAppSettings();
+
+  const currentRole = propRole || contextRole || user?.role || ROLES.ADMIN;
+  const prompts = roleAIPrompts[currentRole] || roleAIPrompts.ADMIN;
+
+  const getWelcomeMessage = (role) => {
+    if (role === ROLES.CUSTOMER) {
+      return {
+        id: 'm-welcome',
+        sender: 'ai',
+        text: `👋 Hello ${user?.name?.split(' ')[0] || 'there'}! I am **RetailMind AI Grocer**.\n\nI can help you find farm-fresh organic produce, recommend healthy recipes, track your grocery orders, or find the best active discount codes!`,
+        actions: [
+          { label: '🔥 Today deals & discounts', query: 'What are the best deals on dairy and bakery today?' },
+          { label: '🍝 Healthy dinner recipe idea', query: 'Can you suggest ingredients for a healthy pasta dinner?' },
+          { label: '🏷️ Active coupon vouchers', query: 'What promo coupon codes are available?' },
+        ],
+      };
+    }
+
+    if (role === ROLES.SELLER) {
+      return {
+        id: 'm-welcome',
+        sender: 'ai',
+        text: `⚡ Welcome to your Shift Terminal, ${user?.name || 'Seller'}! I am **RetailMind Shift Assistant**.\n\nI am tracking your daily quota, store walk-in velocity, and low-stock aisle alerts for **${user?.store || 'Indiranagar Flagship'}**.`,
+        actions: [
+          { label: "📊 Today's sales status", query: "How are today's sales tracking?" },
+          { label: '⚠️ Check aisle stock alerts', query: 'Which items in my store are low in stock?' },
+          { label: '⭐ Best selling SKUs today', query: 'What are the best-selling products today?' },
+        ],
+      };
+    }
+
+    // Default: Admin
+    return {
+      id: 'm-welcome',
+      sender: 'ai',
+      text: `Hello ${user?.name || 'Executive'}! I am **RetailMind AI Enterprise BI**.\n\nI have scanned sales velocities, supply chain bottlenecks, inventory risks across all stores, and customer LTV clusters. What would you like to inspect?`,
+      actions: [
+        { label: '📉 Why did sales drop this week?', query: 'Why did sales drop this week?' },
+        { label: '📦 What should I reorder now?', query: 'What should I reorder right now?' },
+        { label: '⚠️ Products at stock-out risk', query: 'Which products are at risk of stock-out?' },
+      ],
+    };
+  };
+
+  const [messages, setMessages] = useState([getWelcomeMessage(currentRole)]);
+  const [inputQuery, setInputQuery] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  useEffect(() => {
+    setMessages([getWelcomeMessage(currentRole)]);
+  }, [currentRole]);
+
+  if (!isOpen) return null;
+
+  const handleSend = (queryToSend) => {
+    const text = queryToSend || inputQuery;
+    if (!text.trim()) return;
+
+    const userMsg = {
+      id: `u-${Date.now()}`,
+      sender: 'user',
+      text: text.trim(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setInputQuery('');
+    setIsTyping(true);
+
+    setTimeout(() => {
+      const result = getAIResponse(text, currentRole);
+      const aiMsg = {
+        id: `ai-${Date.now()}`,
+        sender: 'ai',
+        text: result.response,
+        actions: result.actions || [],
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+      setIsTyping(false);
+    }, 500);
+  };
+
+  const handleActionClick = (action) => {
+    if (action.query) {
+      handleSend(action.query);
+      return;
+    }
+    if (action.isAction && onOpenPOModal) {
+      onClose();
+      onOpenPOModal();
+      return;
+    }
+    if (action.isPOS) {
+      onClose();
+      window.dispatchEvent(new CustomEvent('open-record-sale-modal'));
+      return;
+    }
+    if (action.route) {
+      onClose();
+      router.push(action.route);
+    }
+  };
+
+  const themeColors = {
+    ADMIN: {
+      bg: 'bg-indigo-600',
+      badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300',
+      border: 'hover:border-indigo-400',
+      btn: 'bg-indigo-600 hover:bg-indigo-700',
+      title: 'RetailMind Enterprise AI',
+      subtitle: 'Executive Predictive Copilot & BI Engine',
+    },
+    SELLER: {
+      bg: 'bg-purple-600',
+      badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300',
+      border: 'hover:border-purple-400',
+      btn: 'bg-purple-600 hover:bg-purple-700',
+      title: 'RetailMind Seller Copilot',
+      subtitle: 'Store Shift Performance & Quick Aisle Assistant',
+    },
+    CUSTOMER: {
+      bg: 'bg-emerald-600',
+      badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300',
+      border: 'hover:border-emerald-400',
+      btn: 'bg-emerald-600 hover:bg-emerald-700',
+      title: 'RetailMind AI Grocer',
+      subtitle: 'Personal Shopping Assistant, Recipes & Deals',
+    },
+  };
+
+  const currentTheme = themeColors[currentRole] || themeColors.ADMIN;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-fade-in"
+        onClick={onClose}
+      />
+
+      {/* Slide-over Drawer */}
+      <div className="relative w-full max-w-lg h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl z-10 flex flex-col justify-between text-slate-900 dark:text-slate-100 animate-fade-in">
+        {/* Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-2xl ${currentTheme.bg} text-white shadow-md`}>
+              <Bot className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {currentTheme.title}
+                </h3>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${currentTheme.badge}`}>
+                  {currentRole}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {currentTheme.subtitle}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Message Log */}
+        <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            >
+              <div
+                className={`max-w-[88%] p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                  msg.sender === 'user'
+                    ? `${currentTheme.bg} text-white rounded-br-none shadow-sm`
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <div className="whitespace-pre-line prose dark:prose-invert prose-sm">
+                  {msg.text}
+                </div>
+
+                {/* AI Action Chips */}
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5">
+                    {msg.actions.map((act, aIdx) => (
+                      <button
+                        key={aIdx}
+                        onClick={() => handleActionClick(act)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-500" />
+                        <span>{act.label}</span>
+                        <ArrowRight className="w-3 h-3 text-slate-400" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {isTyping && (
+            <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 p-2">
+              <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" />
+              <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:0.2s]" />
+              <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:0.4s]" />
+              <span>Analyzing query...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Suggested Quick Prompt Pills */}
+        <div className="px-4 py-2 bg-slate-50/70 dark:bg-slate-950/40 border-t border-slate-200 dark:border-slate-800 overflow-x-auto whitespace-nowrap">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+              Suggested:
+            </span>
+            {prompts.slice(0, 3).map((prompt, pIdx) => (
+              <button
+                key={pIdx}
+                onClick={() => handleSend(prompt)}
+                className={`px-2.5 py-1 rounded-full text-xs bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 ${currentTheme.border} transition-colors cursor-pointer`}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Input Bar */}
+        <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              type="text"
+              value={inputQuery}
+              onChange={(e) => setInputQuery(e.target.value)}
+              placeholder={
+                currentRole === ROLES.CUSTOMER
+                  ? 'Ask AI Grocer for recipes, deals, or grocery ideas...'
+                  : currentRole === ROLES.SELLER
+                  ? 'Ask about shift sales, low stock items, best sellers...'
+                  : 'Ask about sales anomalies, reorder POs, store performance...'
+              }
+              className="flex-1 px-3.5 py-2 rounded-xl text-xs border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!inputQuery.trim() || isTyping}
+              className={`p-2.5 rounded-xl ${currentTheme.btn} disabled:opacity-40 text-white transition-colors cursor-pointer shadow-sm`}
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

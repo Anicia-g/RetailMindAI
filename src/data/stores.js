@@ -1,0 +1,63 @@
+export const initialStores = [
+  {
+    id: "store-01",
+    name: "Indiranagar Flagship",
+    code: "Store 01",
+    city: "Bangalore",
+    state: "Karnataka",
+    manager: "Sanjay Menon",
+    phone: "+91 80 2521 8899",
+    employeesCount: 18,
+    monthlySales: 4850000,
+    inventoryHealth: "Healthy",
+    stockoutItemsCount: 2,
+    status: "Active",
+    address: "100 Feet Road, HAL 2nd Stage, Indiranagar, Bangalore"
+  },
+  {
+    id: "store-12",
+    name: "Bandra Central",
+    code: "Store 12",
+    city: "Mumbai",
+    state: "Maharashtra",
+    manager: "Farhan Merchant",
+    phone: "+91 22 2640 1122",
+    employeesCount: 14,
+    monthlySales: 3920000,
+    inventoryHealth: "Critical",
+    stockoutItemsCount: 6,
+    status: "Active",
+    address: "Hill Road, Bandra West, Mumbai",
+    aiAlert: "Recent sales drop of 8% traced directly to stockouts of high-velocity items (Wireless Mouse, Flasks)."
+  },
+  {
+    id: "store-03",
+    name: "Anna Nagar Supercenter",
+    code: "Store 03",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    manager: "Karthik Subramanian",
+    phone: "+91 44 2621 3344",
+    employeesCount: 16,
+    monthlySales: 3450000,
+    inventoryHealth: "Low Stock",
+    stockoutItemsCount: 3,
+    status: "Active",
+    address: "2nd Avenue, Anna Nagar, Chennai"
+  },
+  {
+    id: "store-04",
+    name: "Connaught Place Hub",
+    code: "Store 04",
+    city: "New Delhi",
+    state: "Delhi",
+    manager: "Simran Kaur",
+    phone: "+91 11 2332 5566",
+    employeesCount: 20,
+    monthlySales: 5120000,
+    inventoryHealth: "Healthy",
+    stockoutItemsCount: 1,
+    status: "Active",
+    address: "Inner Circle, Connaught Place, New Delhi"
+  }
+];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useSpeechRecognition } from './useSpeechRecognition';
@@ -15,20 +15,26 @@ export function useVoiceNavigation({ onOpenAIAssistant, onOpenCartDrawer } = {})
   const { role } = useAuth();
 
   const [feedback, setFeedback] = useState(null); // { type: 'success' | 'warning' | 'error' | 'info', title: string, message: string }
-  const [feedbackTimer, setFeedbackTimer] = useState(null);
+  const timerRef = useRef(null);
 
   const clearFeedback = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setFeedback(null);
   }, []);
 
-  const showFeedback = useCallback((fb, duration = 4000) => {
+  const showFeedback = useCallback((fb, duration = 4500) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setFeedback(fb);
-    if (feedbackTimer) clearTimeout(feedbackTimer);
-    const timer = setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       setFeedback(null);
     }, duration);
-    setFeedbackTimer(timer);
-  }, [feedbackTimer]);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleSpeechResult = useCallback(
     (finalSpeech) => {
@@ -42,7 +48,7 @@ export function useVoiceNavigation({ onOpenAIAssistant, onOpenCartDrawer } = {})
           title: result.title,
           message: `Heard: "${finalSpeech}" → ${result.message}`,
           intent: result.intent,
-        });
+        }, 3500);
 
         // Handle special action routes vs page navigation
         if (result.isAction) {
@@ -82,29 +88,69 @@ export function useVoiceNavigation({ onOpenAIAssistant, onOpenCartDrawer } = {})
     [role, router, showFeedback, onOpenAIAssistant, onOpenCartDrawer]
   );
 
-  const speech = useSpeechRecognition({
-    onResult: handleSpeechResult,
-    onError: (errorMsg) => {
+  const handleSpeechError = useCallback(
+    (errorMsg, rawCode) => {
+      // Differentiate user guidance based on error code
+      if (rawCode === 'aborted') {
+        return; // Normal cancellation, do not alert user
+      }
+
+      if (rawCode === 'no-speech') {
+        showFeedback({
+          type: 'info',
+          title: 'No Speech Detected',
+          message: 'Click the microphone button and speak a command like "Open inventory" or "Show sales".',
+        }, 3500);
+        return;
+      }
+
+      if (rawCode === 'not-allowed' || rawCode === 'permission-denied') {
+        showFeedback({
+          type: 'warning',
+          title: 'Microphone Permission Needed',
+          message: 'Microphone access is blocked. Please allow microphone permissions in your browser address bar or settings.',
+          code: 'not-allowed',
+        }, 6000);
+        return;
+      }
+
+      if (rawCode === 'service-not-allowed') {
+        showFeedback({
+          type: 'warning',
+          title: 'Speech Service Notice',
+          message: 'Speech recognition service is unavailable. If using Safari on macOS, enable Siri/Dictation in System Settings, or try Chrome.',
+          code: 'service-not-allowed',
+        }, 6000);
+        return;
+      }
+
       showFeedback({
         type: 'error',
-        title: 'Microphone Issue',
+        title: 'Voice Recognition Notice',
         message: errorMsg,
-      }, 5000);
+      }, 4500);
     },
+    [showFeedback]
+  );
+
+  const speech = useSpeechRecognition({
+    onResult: handleSpeechResult,
+    onError: handleSpeechError,
   });
 
   const toggleVoiceNavigation = useCallback(() => {
     if (speech.isListening) {
       speech.stopListening();
+      clearFeedback();
     } else {
       speech.startListening();
       showFeedback({
         type: 'info',
-        title: 'Listening...',
-        message: 'Speak a command like "Open inventory", "Show sales", or "Show offers"',
+        title: 'Listening for Command...',
+        message: 'Speak a command (e.g. "Open inventory", "Show sales", "Show offers", "Ask AI")',
       }, 3000);
     }
-  }, [speech, showFeedback]);
+  }, [speech, showFeedback, clearFeedback]);
 
   return {
     isListening: speech.isListening,

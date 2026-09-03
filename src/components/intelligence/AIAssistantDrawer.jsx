@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   X,
@@ -73,35 +73,32 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
   const [messages, setMessages] = useState([getWelcomeMessage(currentRole)]);
   const [inputQuery, setInputQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [autoVoiceResponse, setAutoVoiceResponse] = useState(true);
 
+  const messagesEndRef = useRef(null);
   const synth = useSpeechSynthesis();
-  const speech = useSpeechRecognition({
-    onResult: (spokenText) => {
-      setInputQuery((prev) => (prev ? `${prev} ${spokenText}` : spokenText));
-    },
-  });
+
+  // Scroll chat messages smoothly
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    setMessages([getWelcomeMessage(currentRole)]);
-  }, [currentRole]);
+    scrollToBottom();
+  }, [messages, isTyping]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      synth.stop();
-      speech.stopListening();
-    }
-  }, [isOpen, synth, speech]);
-
-  if (!isOpen) return null;
-
-  const handleSend = (queryToSend) => {
+  const handleSend = (queryToSend, isFromVoice = false) => {
     const text = queryToSend || inputQuery;
-    if (!text.trim()) return;
+    if (!text || !text.trim()) return;
+
+    // Stop any active text-to-speech
+    synth.stop();
 
     const userMsg = {
       id: `u-${Date.now()}`,
       sender: 'user',
       text: text.trim(),
+      isVoice: isFromVoice,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInputQuery('');
@@ -109,15 +106,63 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
 
     setTimeout(() => {
       const result = getAIResponse(text, currentRole);
+      const aiMsgId = `ai-${Date.now()}`;
       const aiMsg = {
-        id: `ai-${Date.now()}`,
+        id: aiMsgId,
         sender: 'ai',
         text: result.response,
         actions: result.actions || [],
       };
       setMessages((prev) => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 500);
+
+      // Speak response aloud if triggered by voice and auto-voice response is enabled
+      if (isFromVoice && autoVoiceResponse && synth.isSupported) {
+        synth.speak(result.response, aiMsgId);
+      }
+    }, 450);
+  };
+
+  const speech = useSpeechRecognition({
+    onResult: (spokenText) => {
+      if (!spokenText || !spokenText.trim()) return;
+      speech.stopListening();
+      setInputQuery('');
+      handleSend(spokenText.trim(), true);
+    },
+    onError: (errorMsg) => {
+      console.warn('AI Assistant voice notice:', errorMsg);
+    },
+  });
+
+  useEffect(() => {
+    setMessages([getWelcomeMessage(currentRole)]);
+  }, [currentRole]);
+
+  const { stopListening } = speech;
+  const { stop: stopSynth } = synth;
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopSynth();
+      stopListening();
+    }
+  }, [isOpen, stopSynth, stopListening]);
+
+  if (!isOpen) return null;
+
+  const handleToggleMic = () => {
+    synth.stop();
+    if (speech.isListening) {
+      speech.stopListening();
+      if (speech.transcript?.trim()) {
+        handleSend(speech.transcript.trim(), true);
+      } else if (inputQuery.trim()) {
+        handleSend(inputQuery.trim(), true);
+      }
+    } else {
+      speech.startListening();
+    }
   };
 
   const handleActionClick = (action) => {
@@ -201,12 +246,36 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {synth.isSupported && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (synth.isSpeaking) synth.stop();
+                  setAutoVoiceResponse(!autoVoiceResponse);
+                }}
+                title={
+                  autoVoiceResponse
+                    ? 'Voice output enabled (Click to mute auto-read)'
+                    : 'Voice output muted (Click to enable auto-read)'
+                }
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  autoVoiceResponse
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {autoVoiceResponse ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Message Log */}
@@ -280,6 +349,7 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
               <span>Analyzing query...</span>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Suggested Quick Prompt Pills */}
@@ -302,17 +372,43 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
 
         {/* Live speech recognition status indicator */}
         {speech.isListening && (
-          <div className="px-4 py-1.5 bg-rose-500/10 border-t border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center justify-between animate-fade-in">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-              <span>Listening... Speak your question</span>
+          <div className="px-4 py-2 bg-rose-500/10 border-t border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="font-bold text-[11px] uppercase tracking-wider text-rose-500">
+                  Listening...
+                </p>
+                <p className="text-xs text-slate-700 dark:text-slate-300 truncate font-normal">
+                  {speech.interimTranscript ? `"${speech.interimTranscript}"` : 'Speak your question now...'}
+                </p>
+              </div>
             </div>
             <button
               type="button"
-              onClick={speech.stopListening}
-              className="text-[11px] font-bold underline cursor-pointer"
+              onClick={() => {
+                speech.stopListening();
+                if (speech.interimTranscript?.trim() || speech.transcript?.trim()) {
+                  handleSend(speech.transcript || speech.interimTranscript, true);
+                }
+              }}
+              className="px-2.5 py-1 rounded-lg bg-rose-500 text-white text-xs font-bold shadow-xs hover:bg-rose-600 transition-colors cursor-pointer flex-shrink-0 ml-2"
             >
               Done
+            </button>
+          </div>
+        )}
+
+        {/* Speech Recognition Error Banner */}
+        {speech.error && !speech.isListening && (
+          <div className="px-4 py-2 bg-amber-500/10 border-t border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-center justify-between animate-fade-in">
+            <span className="text-[11px] leading-tight">{speech.error}</span>
+            <button
+              type="button"
+              onClick={speech.resetState}
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
@@ -331,7 +427,9 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
               placeholder={
-                currentRole === ROLES.CUSTOMER
+                speech.isListening
+                  ? 'Listening to speech...'
+                  : currentRole === ROLES.CUSTOMER
                   ? 'Ask AI Grocer for recipes, deals, or grocery ideas...'
                   : currentRole === ROLES.SELLER
                   ? 'Ask about shift sales, low stock items, best sellers...'
@@ -342,23 +440,17 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
             {/* Speech-To-Text Microphone Button */}
             <button
               type="button"
-              onClick={() => {
-                if (speech.isListening) {
-                  speech.stopListening();
-                } else {
-                  speech.startListening();
-                }
-              }}
+              onClick={handleToggleMic}
               title={
                 !speech.isSupported
                   ? 'Speech recognition not supported in browser'
                   : speech.isListening
-                  ? '🔴 Listening... Click to stop'
+                  ? '🔴 Listening... Click to stop or finish'
                   : '🎙️ Speak your question'
               }
               className={`p-2.5 rounded-xl transition-all cursor-pointer ${
                 speech.isListening
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30 animate-pulse'
+                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30 animate-pulse ring-2 ring-rose-300'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >

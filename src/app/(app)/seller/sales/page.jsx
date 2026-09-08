@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { initialSales } from '@/data/sales';
+import { orderService } from '@/services/orderService';
 import { Button } from '@/components/common/Button';
 import { Table } from '@/components/common/Table';
 import { Badge } from '@/components/common/Badge';
@@ -31,6 +32,20 @@ export default function SellerSalesPage() {
   const [sales, setSales] = useState(initialSales);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('All');
+
+  useEffect(() => {
+    async function loadSales() {
+      try {
+        const data = await orderService.getAllOrders();
+        if (Array.isArray(data) && data.length > 0) {
+          setSales(data);
+        }
+      } catch (err) {
+        console.warn('Seller sales fallback:', err);
+      }
+    }
+    loadSales();
+  }, []);
 
   useEffect(() => {
     const handleSaleRecorded = (e) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CreditCard,
   Search,
@@ -21,11 +21,26 @@ import { Pagination } from '@/components/common/Pagination';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 import { initialPayments } from '@/data/payments';
+import { paymentService } from '@/services/paymentService';
 
 export default function PaymentsPage() {
   const { t } = useAppSettings();
 
   const [paymentList, setPaymentList] = useState(initialPayments);
+
+  useEffect(() => {
+    async function loadPayments() {
+      try {
+        const data = await paymentService.getAllPayments();
+        if (Array.isArray(data) && data.length > 0) {
+          setPaymentList(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback payments:', err);
+      }
+    }
+    loadPayments();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -167,7 +182,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="w-full md:w-80">
           <Input
             placeholder="Search transaction ID, order, customer..."
@@ -180,7 +195,7 @@ export default function PaymentsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
           <Select
             value={methodFilter}
             onChange={(e) => {
@@ -193,7 +208,7 @@ export default function PaymentsPage() {
               { value: 'Card', label: 'Card' },
               { value: 'Transfer', label: 'Bank Transfer' },
             ]}
-            className="w-48"
+            className="w-full sm:w-48"
           />
         </div>
       </div>

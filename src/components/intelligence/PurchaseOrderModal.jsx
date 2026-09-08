@@ -8,9 +8,27 @@ import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { initialSuppliers } from '@/data/suppliers';
 import { initialProducts } from '@/data/products';
+import { supplierService } from '@/services/supplierService';
+import { purchaseOrderService } from '@/services/purchaseOrderService';
 
 export function PurchaseOrderModal({ isOpen, onClose, initialItem, onOrderCreated }) {
+  const [suppliersList, setSuppliersList] = useState(initialSuppliers);
   const [supplierId, setSupplierId] = useState('sup-001');
+
+  useEffect(() => {
+    async function loadSuppliers() {
+      try {
+        const data = await supplierService.getAllSuppliers();
+        if (Array.isArray(data) && data.length > 0) {
+          setSuppliersList(data);
+          setSupplierId(data[0].id || data[0]._id || 'sup-001');
+        }
+      } catch (err) {
+        console.warn('Using local suppliers fallback in PO modal:', err);
+      }
+    }
+    loadSuppliers();
+  }, []);
   const [items, setItems] = useState([
     {
       productId: 'prod-001',
@@ -76,17 +94,17 @@ export function PurchaseOrderModal({ isOpen, onClose, initialItem, onOrderCreate
 
   const totalCost = items.reduce((acc, item) => acc + item.total, 0);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
     setIsSubmitting(true);
 
-    const selectedSup = initialSuppliers.find((s) => s.id === supplierId) || initialSuppliers[0];
+    const selectedSup = suppliersList.find((s) => s.id === supplierId || s._id === supplierId) || suppliersList[0] || initialSuppliers[0];
 
     const newPO = {
       id: `PO-${Math.floor(1000 + Math.random() * 9000)}`,
       poNumber: `PO-2024-${Math.floor(1000 + Math.random() * 9000)}`,
-      supplier: selectedSup.name,
-      supplierId: selectedSup.id,
+      supplier: selectedSup?.name || 'Fresh Farms Supply Co.',
+      supplierId: selectedSup?.id || selectedSup?._id || 'sup-001',
       orderDate: new Date().toISOString().split('T')[0],
       expectedDelivery: expectedDate,
       totalCost,
@@ -96,17 +114,33 @@ export function PurchaseOrderModal({ isOpen, onClose, initialItem, onOrderCreate
       notes,
     };
 
+    try {
+      await purchaseOrderService.createPurchaseOrder({
+        supplierId: newPO.supplierId,
+        storeId: 'STR-001',
+        items: items.map((it) => ({
+          productId: it.productId,
+          productName: it.name,
+          quantity: it.quantity,
+          unitCost: it.unitCost,
+          totalCost: it.total,
+        })),
+        expectedDeliveryDate: expectedDate,
+        notes,
+      });
+    } catch (err) {
+      console.warn('Backend PO creation fallback triggered:', err);
+    }
+
+    setIsSubmitting(false);
+    setSuccess(true);
+    if (onOrderCreated) {
+      onOrderCreated(newPO);
+    }
     setTimeout(() => {
-      setIsSubmitting(false);
-      setSuccess(true);
-      if (onOrderCreated) {
-        onOrderCreated(newPO);
-      }
-      setTimeout(() => {
-        setSuccess(false);
-        onClose();
-      }, 1200);
-    }, 600);
+      setSuccess(false);
+      onClose();
+    }, 1200);
   };
 
   return (

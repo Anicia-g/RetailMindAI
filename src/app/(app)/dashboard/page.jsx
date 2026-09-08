@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   IndianRupee,
@@ -38,16 +38,50 @@ import { SmartDiscountSection } from '@/components/analytics/SmartDiscountSectio
 import { initialProducts } from '@/data/products';
 import { initialCustomers, initialCustomerClusters } from '@/data/customers';
 import { initialEmployees } from '@/data/employees';
+import { analyticsService } from '@/services/analyticsService';
+import { productService } from '@/services/productService';
+import { customerService } from '@/services/customerService';
+import { sellerService } from '@/services/sellerService';
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useAppSettings();
 
-  const [products] = useState(initialProducts);
-  const [customers] = useState(initialCustomers);
-  const [employees] = useState(initialEmployees);
+  const [products, setProducts] = useState(initialProducts);
+  const [customers, setCustomers] = useState(initialCustomers);
+  const [employees, setEmployees] = useState(initialEmployees);
   const [clusters, setClusters] = useState(initialCustomerClusters);
+  const [dashboardMetrics, setDashboardMetrics] = useState(null);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const [dashRes, prodsRes, custRes, sellRes] = await Promise.allSettled([
+          analyticsService.getAdminDashboard(),
+          productService.getAllProducts(),
+          customerService.getAllCustomers(),
+          sellerService.getAllSellers(),
+        ]);
+
+        if (dashRes.status === 'fulfilled' && dashRes.value) {
+          setDashboardMetrics(dashRes.value);
+        }
+        if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value) && prodsRes.value.length > 0) {
+          setProducts(prodsRes.value);
+        }
+        if (custRes.status === 'fulfilled' && Array.isArray(custRes.value) && custRes.value.length > 0) {
+          setCustomers(custRes.value);
+        }
+        if (sellRes.status === 'fulfilled' && Array.isArray(sellRes.value) && sellRes.value.length > 0) {
+          setEmployees(sellRes.value);
+        }
+      } catch (err) {
+        console.warn('Dashboard data loading error, retaining default state:', err);
+      }
+    }
+    loadDashboardData();
+  }, []);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);

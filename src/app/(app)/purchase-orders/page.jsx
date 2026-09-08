@@ -24,6 +24,7 @@ import { Pagination } from '@/components/common/Pagination';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 import { initialPurchaseOrders, aiSuggestedOrder } from '@/data/purchaseOrders';
+import { purchaseOrderService } from '@/services/purchaseOrderService';
 
 export default function PurchaseOrdersPage() {
   const { t } = useAppSettings();
@@ -37,6 +38,20 @@ export default function PurchaseOrdersPage() {
   // Modals
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activePO, setActivePO] = useState(null);
+
+  useEffect(() => {
+    async function loadPOs() {
+      try {
+        const data = await purchaseOrderService.getAllPurchaseOrders();
+        if (Array.isArray(data) && data.length > 0) {
+          setPoList(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback purchase orders:', err);
+      }
+    }
+    loadPOs();
+  }, []);
 
   // Listen for global PO created events
   useEffect(() => {
@@ -256,7 +271,7 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="w-full md:w-80">
           <Input
             placeholder="Search PO number, supplier..."
@@ -269,7 +284,7 @@ export default function PurchaseOrdersPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
           <Select
             value={statusFilter}
             onChange={(e) => {
@@ -282,7 +297,7 @@ export default function PurchaseOrdersPage() {
               { value: 'In Transit', label: 'In Transit' },
               { value: 'Delivered', label: 'Delivered' },
             ]}
-            className="w-48"
+            className="w-full sm:w-48"
           />
         </div>
       </div>

@@ -1,0 +1,186 @@
+{
+  "modelName": "demand-forecasting-suite",
+  "modelVersion": "1.0.0",
+  "algorithms": [
+    "ARIMA(2,1,1)",
+    "Holt-Winters Exponential Smoothing"
+  ],
+  "historyDays": 90,
+  "holdoutTestDays": 14,
+  "evaluationReport": {
+    "prod-001": {
+      "productId": "prod-001",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 5.7,
+          "rmse": 6.4,
+          "smape": 23.04
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 5.63,
+          "rmse": 6.11,
+          "smape": 22.68
+        }
+      },
+      "bestMetrics": {
+        "mae": 5.63,
+        "rmse": 6.11,
+        "smape": 22.68
+      }
+    },
+    "prod-002": {
+      "productId": "prod-002",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 2.54,
+          "rmse": 3.46,
+          "smape": 13.27
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 2.56,
+          "rmse": 3.04,
+          "smape": 14.19
+        }
+      },
+      "bestMetrics": {
+        "mae": 2.56,
+        "rmse": 3.04,
+        "smape": 14.19
+      }
+    },
+    "prod-003": {
+      "productId": "prod-003",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 1.45,
+          "rmse": 1.63,
+          "smape": 12.73
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 1.0,
+          "rmse": 1.12,
+          "smape": 8.94
+        }
+      },
+      "bestMetrics": {
+        "mae": 1.0,
+        "rmse": 1.12,
+        "smape": 8.94
+      }
+    },
+    "prod-004": {
+      "productId": "prod-004",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 2.25,
+          "rmse": 3.14,
+          "smape": 14.78
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 1.93,
+          "rmse": 2.45,
+          "smape": 12.91
+        }
+      },
+      "bestMetrics": {
+        "mae": 1.93,
+        "rmse": 2.45,
+        "smape": 12.91
+      }
+    },
+    "prod-005": {
+      "productId": "prod-005",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 1.33,
+          "rmse": 1.49,
+          "smape": 14.9
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 1.09,
+          "rmse": 1.31,
+          "smape": 12.22
+        }
+      },
+      "bestMetrics": {
+        "mae": 1.09,
+        "rmse": 1.31,
+        "smape": 12.22
+      }
+    },
+    "prod-006": {
+      "productId": "prod-006",
+      "winningModel": "Holt-Winters",
+      "arima": {
+        "order": [
+          2,
+          1,
+          1
+        ],
+        "metrics": {
+          "mae": 3.76,
+          "rmse": 4.54,
+          "smape": 17.8
+        }
+      },
+      "holtWinters": {
+        "seasonalPeriods": 7,
+        "metrics": {
+          "mae": 3.47,
+          "rmse": 4.26,
+          "smape": 16.52
+        }
+      },
+      "bestMetrics": {
+        "mae": 3.47,
+        "rmse": 4.26,
+        "smape": 16.52
+      }
+    }
+  }
+}

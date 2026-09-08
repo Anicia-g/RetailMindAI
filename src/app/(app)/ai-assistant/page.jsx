@@ -22,6 +22,7 @@ import { useAppSettings } from '@/context/AppSettingsContext';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { sampleAIPrompts, getAIResponse } from '@/data/aiResponses';
+import { aiAssistantService } from '@/services/aiAssistantService';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 
@@ -58,7 +59,7 @@ export default function AIAssistantPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSend = (queryToSend, isFromVoice = false) => {
+  const handleSend = async (queryToSend, isFromVoice = false) => {
     const text = queryToSend || inputValue;
     if (!text || !text.trim()) return;
 
@@ -76,6 +77,29 @@ export default function AIAssistantPage() {
     setInputValue('');
     setIsTyping(true);
 
+    try {
+      const serverRes = await aiAssistantService.sendQuery(text.trim(), { role: 'ADMIN' });
+      const responseText = serverRes?.reply || serverRes?.response || serverRes?.message;
+      if (responseText) {
+        const aiMsgId = `ai-${Date.now()}`;
+        const aiMsg = {
+          id: aiMsgId,
+          sender: 'ai',
+          text: responseText,
+          actions: serverRes.actions || serverRes.suggestions?.map((s) => ({ label: s, query: s })) || [],
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+
+        if (isFromVoice && autoVoiceResponse && synth.isSupported) {
+          synth.speak(responseText, aiMsgId);
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend AI query fallback triggered:', err);
+    }
+
     setTimeout(() => {
       const result = getAIResponse(text);
       const aiMsgId = `ai-${Date.now()}`;
@@ -92,7 +116,7 @@ export default function AIAssistantPage() {
       if (isFromVoice && autoVoiceResponse && synth.isSupported) {
         synth.speak(result.response, aiMsgId);
       }
-    }, 500);
+    }, 400);
   };
 
   const speech = useSpeechRecognition({

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus,
   Search,
@@ -30,11 +30,26 @@ import { initialProducts, productCategories } from '@/data/products';
 import { initialSuppliers } from '@/data/suppliers';
 import { initialEmployees } from '@/data/employees';
 import { initialStores } from '@/data/stores';
+import { productService } from '@/services/productService';
 
 export default function ProductsPage() {
   const { t } = useAppSettings();
 
   const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback products:', err);
+      }
+    }
+    loadProducts();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedSeller, setSelectedSeller] = useState('All');
@@ -173,7 +188,7 @@ export default function ProductsPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSaveAdd = (e) => {
+  const handleSaveAdd = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -202,47 +217,62 @@ export default function ProductsPage() {
       suggestedReorder: Number(formData.reorderLevel) * 2,
     };
 
-    setProducts([newProd, ...products]);
+    try {
+      const created = await productService.createProduct(newProd);
+      setProducts([created || newProd, ...products]);
+    } catch (err) {
+      console.warn('Backend product creation fallback:', err);
+      setProducts([newProd, ...products]);
+    }
     setIsAddModalOpen(false);
   };
 
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    const numStock = Number(formData.stock);
+    const numReorder = Number(formData.reorderLevel);
+    const updatedProd = {
+      ...activeProduct,
+      name: formData.name,
+      sku: formData.sku,
+      category: formData.category,
+      brand: formData.brand,
+      unit: formData.unit,
+      price: Number(formData.price),
+      costPrice: Number(formData.costPrice),
+      tax: Number(formData.tax),
+      stock: numStock,
+      reorderLevel: numReorder,
+      supplier: formData.supplier,
+      seller: formData.seller,
+      store: formData.store,
+      status: formData.status,
+      stockStatus: numStock <= numReorder ? 'Low Stock' : 'Healthy',
+    };
+
+    try {
+      await productService.updateProduct(activeProduct.id || activeProduct._id, updatedProd);
+    } catch (err) {
+      console.warn('Backend product update fallback:', err);
+    }
+
     setProducts(
-      products.map((p) => {
-        if (p.id === activeProduct.id) {
-          const numStock = Number(formData.stock);
-          const numReorder = Number(formData.reorderLevel);
-          return {
-            ...p,
-            name: formData.name,
-            sku: formData.sku,
-            category: formData.category,
-            brand: formData.brand,
-            unit: formData.unit,
-            price: Number(formData.price),
-            costPrice: Number(formData.costPrice),
-            tax: Number(formData.tax),
-            stock: numStock,
-            reorderLevel: numReorder,
-            supplier: formData.supplier,
-            seller: formData.seller,
-            store: formData.store,
-            status: formData.status,
-            stockStatus: numStock <= numReorder ? 'Low Stock' : 'Healthy',
-          };
-        }
-        return p;
-      })
+      products.map((p) => ((p.id === activeProduct.id || p._id === activeProduct._id) ? updatedProd : p))
     );
     setIsEditModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (activeProduct) {
-      setProducts(products.filter((p) => p.id !== activeProduct.id));
+      const prodId = activeProduct.id || activeProduct._id;
+      try {
+        await productService.deleteProduct(prodId);
+      } catch (err) {
+        console.warn('Backend product deletion fallback:', err);
+      }
+      setProducts(products.filter((p) => (p.id !== prodId && p._id !== prodId)));
       setIsDeleteDialogOpen(false);
       setActiveProduct(null);
     }
@@ -417,7 +447,7 @@ export default function ProductsPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full lg:w-auto flex-wrap">
+          <div className="flex items-center gap-2.5 w-full lg:w-auto flex-wrap">
             <Select
               value={selectedCategory}
               onChange={(e) => {
@@ -425,7 +455,7 @@ export default function ProductsPage() {
                 setCurrentPage(1);
               }}
               options={productCategories.map((c) => ({ value: c, label: c === 'All' ? 'All Categories' : c }))}
-              className="w-36"
+              className="w-full sm:w-44"
             />
 
             <Select
@@ -435,7 +465,7 @@ export default function ProductsPage() {
                 setCurrentPage(1);
               }}
               options={sellerOptions.map((s) => ({ value: s, label: s === 'All' ? 'All Sellers' : s }))}
-              className="w-36"
+              className="w-full sm:w-40"
             />
 
             <Select
@@ -445,7 +475,7 @@ export default function ProductsPage() {
                 setCurrentPage(1);
               }}
               options={storeOptions.map((st) => ({ value: st, label: st === 'All' ? 'All Stores' : st.split('(')[0] }))}
-              className="w-40"
+              className="w-full sm:w-44"
             />
 
             <Select
@@ -460,7 +490,7 @@ export default function ProductsPage() {
                 { value: 'Low Stock', label: 'Low / Critical Stock' },
                 { value: 'Overstock', label: 'Overstock Buffer' },
               ]}
-              className="w-36"
+              className="w-full sm:w-48"
             />
           </div>
         </div>

@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "backend": "cd backend && npm start",
+    "backend:dev": "cd backend && npm run dev",
+    "backend:seed": "cd backend && npm run seed",
+    "backend:test": "cd backend && npm test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

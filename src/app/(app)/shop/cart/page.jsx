@@ -22,6 +22,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Badge } from '@/components/common/Badge';
+import { orderService } from '@/services/orderService';
 
 export default function ShopCartPage() {
   const router = useRouter();
@@ -70,20 +71,36 @@ export default function ShopCartPage() {
     }
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
     setIsCheckingOut(true);
 
-    setTimeout(() => {
-      const createdOrder = placeCustomerOrder({
+    try {
+      await orderService.createCustomerOrder({
+        items: cart.map((item) => ({
+          productId: item.productId || item.id,
+          productName: item.name,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.price * item.quantity,
+        })),
         totalAmount: grandTotal,
-        store: user?.store || 'Indiranagar Flagship (Store 01)',
-        paymentMethod: paymentMethod === 'UPI' ? 'UPI (Google Pay / PhonePe)' : paymentMethod === 'Card' ? 'Credit Card (Visa / Master)' : 'Cash on Delivery',
-        deliveryAddress: deliveryAddress,
+        storeId: user?.storeId || 'STR-001',
+        paymentMethod: paymentMethod === 'UPI' ? 'UPI' : paymentMethod === 'Card' ? 'Card' : 'Cash',
+        deliveryAddress,
       });
-      setIsCheckingOut(false);
-      router.push('/shop/orders');
-    }, 800);
+    } catch (err) {
+      console.warn('Backend customer order creation fallback:', err);
+    }
+
+    placeCustomerOrder({
+      totalAmount: grandTotal,
+      store: user?.store || 'Indiranagar Flagship (Store 01)',
+      paymentMethod: paymentMethod === 'UPI' ? 'UPI (Google Pay / PhonePe)' : paymentMethod === 'Card' ? 'Credit Card (Visa / Master)' : 'Cash on Delivery',
+      deliveryAddress: deliveryAddress,
+    });
+    setIsCheckingOut(false);
+    router.push('/shop/orders');
   };
 
   return (

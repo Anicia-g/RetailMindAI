@@ -1,74 +1,72 @@
 import { mockOtpService } from './mockOtpService';
+import { apiClient } from '@/lib/apiClient';
 
 /**
  * OTP Service
- * Unified service interface prepared for Express backend API endpoints.
- * Falls back safely to mockOtpService during client/local development.
+ * Calls Express backend OTP endpoints (/api/auth/send-otp, /api/auth/verify-otp)
+ * with graceful fallback to mockOtpService.
  */
 class OtpService {
   async sendOtp(identifier, purpose = 'VERIFICATION') {
     try {
-      // Future Express API contract:
-      // const res = await fetch('/api/auth/send-otp', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ identifier, purpose }),
-      // });
-      // return await res.json();
-      return await mockOtpService.sendOtp(identifier, purpose);
+      const res = await apiClient.post('/auth/send-otp', { identifier, purpose });
+      if (res && res.success) {
+        return res;
+      }
     } catch (err) {
-      console.warn('Backend send-otp endpoint unavailable, using mock OTP service fallback:', err);
-      return await mockOtpService.sendOtp(identifier, purpose);
+      console.warn('Backend send-otp endpoint unavailable or errored, using mock OTP service fallback:', err.message);
     }
+    return await mockOtpService.sendOtp(identifier, purpose);
   }
 
   async verifyOtp(identifier, otp, purpose = 'VERIFICATION') {
     try {
-      // Future Express API contract:
-      // const res = await fetch('/api/auth/verify-otp', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ identifier, otp, purpose }),
-      // });
-      // return await res.json();
-      return await mockOtpService.verifyOtp(identifier, otp, purpose);
+      const res = await apiClient.post('/auth/verify-otp', { identifier, otp, purpose });
+      if (res && res.success) {
+        return res;
+      }
     } catch (err) {
-      // If error is an actual validation message from mock, propagate it
-      if (err.message && (err.message.includes('Invalid') || err.message.includes('expired') || err.message.includes('attempts'))) {
+      // If error is an actual validation message from server, propagate it
+      if (
+        err.message &&
+        (err.message.includes('Invalid') ||
+          err.message.includes('expired') ||
+          err.message.includes('attempts'))
+      ) {
         throw err;
       }
-      return await mockOtpService.verifyOtp(identifier, otp, purpose);
     }
+    return await mockOtpService.verifyOtp(identifier, otp, purpose);
   }
 
   async resendOtp(identifier, purpose = 'VERIFICATION') {
-    try {
-      // Future Express API contract:
-      // const res = await fetch('/api/auth/resend-otp', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ identifier, purpose }),
-      // });
-      // return await res.json();
-      return await mockOtpService.resendOtp(identifier, purpose);
-    } catch (err) {
-      return await mockOtpService.resendOtp(identifier, purpose);
-    }
+    return this.sendOtp(identifier, purpose);
   }
 
   async resetPasswordWithOtp(identifier, otp, newPassword) {
     try {
-      const verifyResult = await this.verifyOtp(identifier, otp, 'PASSWORD_RESET');
-      if (verifyResult.success) {
-        return {
-          success: true,
-          message: 'Password reset successfully. You may now login with your new credentials.',
-        };
+      const res = await apiClient.post('/auth/reset-password', {
+        identifier,
+        otp,
+        newPassword,
+      });
+      if (res && res.success) {
+        return res;
       }
-      return verifyResult;
     } catch (err) {
-      throw err;
+      if (err.message && err.message.includes('Invalid')) {
+        throw err;
+      }
     }
+
+    const verifyResult = await this.verifyOtp(identifier, otp, 'PASSWORD_RESET');
+    if (verifyResult.success) {
+      return {
+        success: true,
+        message: 'Password reset successfully. You may now login with your new credentials.',
+      };
+    }
+    return verifyResult;
   }
 }
 

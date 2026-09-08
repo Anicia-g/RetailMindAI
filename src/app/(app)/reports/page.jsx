@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Download,
@@ -24,6 +24,7 @@ import { initialSales } from '@/data/sales';
 import { initialInventory } from '@/data/inventory';
 import { initialCustomers } from '@/data/customers';
 import { initialSuppliers } from '@/data/suppliers';
+import { reportService } from '@/services/reportService';
 
 export default function ReportsPage() {
   const { t } = useAppSettings();
@@ -32,6 +33,26 @@ export default function ReportsPage() {
   const [startDate, setStartDate] = useState('2024-08-01');
   const [endDate, setEndDate] = useState('2024-08-31');
   const [exportedToast, setExportedToast] = useState(false);
+  const [liveReportData, setLiveReportData] = useState(null);
+
+  useEffect(() => {
+    async function loadReport() {
+      try {
+        let res;
+        if (reportType === 'sales') res = await reportService.getSalesReport({ startDate, endDate });
+        else if (reportType === 'inventory') res = await reportService.getInventoryReport();
+        else if (reportType === 'customers') res = await reportService.getCustomerReport();
+        else if (reportType === 'suppliers') res = await reportService.getSupplierReport();
+
+        if (res && Array.isArray(res.data || res)) {
+          setLiveReportData(res.data || res);
+        }
+      } catch (err) {
+        console.warn('Using local fallback report data:', err);
+      }
+    }
+    loadReport();
+  }, [reportType, startDate, endDate]);
 
   const handleExport = () => {
     setExportedToast(true);

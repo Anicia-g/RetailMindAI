@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { initialProducts, productCategories } from '@/data/products';
+import { productService } from '@/services/productService';
 import { ProductCard } from '@/components/customer/ProductCard';
 import { ProductIntelligenceModal } from '@/components/intelligence/ProductIntelligenceModal';
 import { Input } from '@/components/common/Input';
@@ -24,7 +25,21 @@ export default function ShopProductsPage() {
   const searchParams = useSearchParams();
   const { t } = useAppSettings();
 
-  const [products] = useState(initialProducts);
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Shop products fallback:', err);
+      }
+    }
+    loadProducts();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortBy, setSortBy] = useState('featured'); // 'featured' | 'price-low' | 'price-high' | 'rating' | 'discount'
@@ -105,7 +120,7 @@ export default function ShopProductsPage() {
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               options={productCategories.map((c) => ({ value: c, label: c === 'All' ? 'All Categories' : c }))}
-              className="w-44"
+              className="w-full sm:w-44"
             />
 
             <Select
@@ -118,7 +133,7 @@ export default function ShopProductsPage() {
                 { value: 'rating', label: 'Customer Rating' },
                 { value: 'discount', label: 'Biggest Discount' },
               ]}
-              className="w-44"
+              className="w-full sm:w-44"
             />
           </div>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Package,
   Search,
@@ -15,15 +15,30 @@ import {
 } from 'lucide-react';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { initialProducts, productCategories } from '@/data/products';
+import { productService } from '@/services/productService';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 
-export function SellerProductsPage() {
+export default function SellerProductsPage() {
   const { t } = useAppSettings();
-  const [products] = useState(initialProducts);
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Seller products fallback:', err);
+      }
+    }
+    loadProducts();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -80,7 +95,7 @@ export function SellerProductsPage() {
       )}
 
       {/* Search & Filter */}
-      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="w-full sm:w-80">
           <Input
             placeholder={t('searchPlaceholder')}
@@ -95,7 +110,7 @@ export function SellerProductsPage() {
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             options={productCategories.map((c) => ({ value: c, label: c === 'All' ? 'All Categories' : c }))}
-            className="w-48"
+            className="w-full sm:w-48"
           />
         </div>
       </div>
@@ -259,5 +274,3 @@ export function SellerProductsPage() {
     </div>
   );
 }
-
-export default SellerProductsPage;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Truck,
   Plus,
@@ -26,11 +26,26 @@ import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { initialSuppliers } from '@/data/suppliers';
+import { supplierService } from '@/services/supplierService';
 
 export default function SuppliersPage() {
   const { t } = useAppSettings();
 
   const [suppliers, setSuppliers] = useState(initialSuppliers);
+
+  useEffect(() => {
+    async function loadSuppliers() {
+      try {
+        const data = await supplierService.getAllSuppliers();
+        if (Array.isArray(data) && data.length > 0) {
+          setSuppliers(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback suppliers:', err);
+      }
+    }
+    loadSuppliers();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;

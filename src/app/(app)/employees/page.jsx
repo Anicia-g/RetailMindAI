@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   UserCheck,
   Plus,
@@ -32,11 +32,26 @@ import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { initialEmployees, employeeRoles } from '@/data/employees';
 import { initialStores } from '@/data/stores';
+import { sellerService } from '@/services/sellerService';
 
 export default function EmployeesPage() {
   const { t } = useAppSettings();
 
   const [employees, setEmployees] = useState(initialEmployees);
+
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        const data = await sellerService.getAllSellers();
+        if (Array.isArray(data) && data.length > 0) {
+          setEmployees(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback employees:', err);
+      }
+    }
+    loadEmployees();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [storeFilter, setStoreFilter] = useState('All');
@@ -423,7 +438,7 @@ export default function EmployeesPage() {
               setCurrentPage(1);
             }}
             options={['All', ...initialStores.map((s) => s.name)]}
-            className="w-44"
+            className="w-full sm:w-44"
           />
 
           <Select
@@ -433,7 +448,7 @@ export default function EmployeesPage() {
               setCurrentPage(1);
             }}
             options={['All', ...employeeRoles].map((r) => ({ value: r, label: r === 'All' ? 'All Roles' : r }))}
-            className="w-44"
+            className="w-full sm:w-44"
           />
         </div>
       </div>

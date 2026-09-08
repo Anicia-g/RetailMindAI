@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Sparkles, ShoppingBag, Search, Filter, Flame, Star, Tag, Layers, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -12,6 +12,7 @@ import { FrequentlyBoughtTogether } from '@/components/customer/FrequentlyBought
 import { ProductCard } from '@/components/customer/ProductCard';
 import { ProductIntelligenceModal } from '@/components/intelligence/ProductIntelligenceModal';
 import { initialProducts } from '@/data/products';
+import { productService } from '@/services/productService';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 
@@ -20,7 +21,21 @@ export default function SupermarketShopPage() {
   const { cartItemCount } = useAuth();
   const { t } = useAppSettings();
 
-  const [products] = useState(initialProducts);
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Shop products fallback:', err);
+      }
+    }
+    loadProducts();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedTab, setSelectedTab] = useState('all'); // 'all' | 'recommended' | 'trending' | 'bestsellers'

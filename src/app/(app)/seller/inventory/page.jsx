@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Boxes,
   ShieldAlert,
@@ -24,12 +24,27 @@ import { Badge } from '@/components/common/Badge';
 import { Table } from '@/components/common/Table';
 import { DiscountAnalysisModal } from '@/components/intelligence/DiscountAnalysisModal';
 import { productService } from '@/services/productService';
+import { inventoryService } from '@/services/inventoryService';
 
 export default function SellerInventoryPage() {
   const { user } = useAuth();
   const currentStore = user?.store || 'Indiranagar Flagship (Store 01)';
 
   const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadStoreInventory() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Seller inventory fallback:', err);
+      }
+    }
+    loadStoreInventory();
+  }, [currentStore]);
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'low-stock' | 'expiring' | 'overstock'
   const [searchTerm, setSearchTerm] = useState('');
   const [requestedRestocks, setRequestedRestocks] = useState({});

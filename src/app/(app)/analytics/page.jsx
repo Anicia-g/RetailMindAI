@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -20,12 +20,48 @@ import { Badge } from '@/components/common/Badge';
 import { SalesChart } from '@/components/charts/SalesChart';
 import { CategoryChart } from '@/components/charts/CategoryChart';
 import { initialAnalytics } from '@/data/analytics';
+import { analyticsService } from '@/services/analyticsService';
 
 export default function AnalyticsPage() {
   const { t } = useAppSettings();
   const [timeRange, setTimeRange] = useState('YTD');
+  const [analyticsData, setAnalyticsData] = useState(initialAnalytics);
 
-  const { kpis, storePerformance, paymentMethodDistribution } = initialAnalytics;
+  useEffect(() => {
+    async function loadAnalytics() {
+      try {
+        const data = await analyticsService.getSalesAnalytics({ range: timeRange });
+        if (data && typeof data === 'object') {
+          setAnalyticsData((prev) => ({
+            ...prev,
+            ...data,
+            kpis: {
+              ...prev.kpis,
+              ...(data.kpis || {}),
+              grossMarginPercent: data.kpis?.grossMarginPercent ?? prev.kpis?.grossMarginPercent ?? 38.4,
+              revenueGrowth: data.kpis?.revenueGrowth ?? prev.kpis?.revenueGrowth ?? '+14.2%',
+              orderGrowth: data.kpis?.orderGrowth ?? prev.kpis?.orderGrowth ?? '+8.6%',
+              activeCustomersCount: data.kpis?.activeCustomersCount ?? prev.kpis?.activeCustomersCount ?? 790,
+              totalOrders: data.kpis?.totalOrders ?? data.totalOrders ?? prev.kpis?.totalOrders ?? 2450,
+              totalSales: data.kpis?.totalSales ?? data.totalSales ?? prev.kpis?.totalRevenue ?? 1240000,
+            },
+          }));
+        }
+      } catch (err) {
+        console.warn('Using local fallback analytics:', err);
+      }
+    }
+    loadAnalytics();
+  }, [timeRange]);
+
+  const { kpis, storePerformance, paymentMethodDistribution } = analyticsData;
+  const currentKpis = kpis || initialAnalytics.kpis;
+
+  const formattedSales = currentKpis.totalSales
+    ? (currentKpis.totalSales >= 100000
+        ? `₹${(currentKpis.totalSales / 100000).toFixed(1)} Lakhs`
+        : `₹${currentKpis.totalSales.toLocaleString()}`)
+    : '₹12.4 Lakhs';
 
   return (
     <div className="space-y-6">
@@ -59,28 +95,28 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title={t('totalSales')}
-          value="₹12.4 Lakhs"
-          change={kpis.revenueGrowth}
+          value={formattedSales}
+          change={currentKpis.revenueGrowth || '+14.2%'}
           isPositive={true}
           icon={IndianRupee}
         />
         <StatCard
           title="Gross Margin"
-          value={`${kpis.grossMarginPercent}%`}
+          value={`${currentKpis.grossMarginPercent || 38.4}%`}
           change="+2.4% Margin"
           isPositive={true}
           icon={TrendingUp}
         />
         <StatCard
           title={t('totalOrders')}
-          value={kpis.totalOrders.toLocaleString()}
-          change={kpis.orderGrowth}
+          value={(currentKpis.totalOrders || 0).toLocaleString()}
+          change={currentKpis.orderGrowth || '+8.6%'}
           isPositive={true}
           icon={ShoppingBag}
         />
         <StatCard
           title="Active Customer Base"
-          value={kpis.activeCustomersCount}
+          value={currentKpis.activeCustomersCount || 790}
           change="+18% YoY"
           isPositive={true}
           icon={Users}

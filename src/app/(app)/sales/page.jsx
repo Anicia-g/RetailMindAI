@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShoppingBag,
   IndianRupee,
@@ -22,14 +22,29 @@ import { Table } from '@/components/common/Table';
 import { Pagination } from '@/components/common/Pagination';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
-import { SalesChart } from '@/components/charts/SalesChart';
 import { initialSales } from '@/data/sales';
 import { initialAnalytics } from '@/data/analytics';
+import { orderService } from '@/services/orderService';
+import { SalesChart } from '@/components/charts/SalesChart';
 
 export default function SalesPage() {
   const { t } = useAppSettings();
 
   const [salesList, setSalesList] = useState(initialSales);
+
+  useEffect(() => {
+    async function loadSales() {
+      try {
+        const data = await orderService.getAllOrders();
+        if (Array.isArray(data) && data.length > 0) {
+          setSalesList(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback sales:', err);
+      }
+    }
+    loadSales();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -202,7 +217,7 @@ export default function SalesPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="w-full md:w-80">
           <Input
             placeholder="Search order ID, customer name, store..."
@@ -215,7 +230,7 @@ export default function SalesPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
           <Select
             value={paymentFilter}
             onChange={(e) => {
@@ -228,7 +243,7 @@ export default function SalesPage() {
               { value: 'Card', label: 'Credit / Debit Cards' },
               { value: 'Transfer', label: 'Bank Transfer' },
             ]}
-            className="w-48"
+            className="w-full sm:w-48"
           />
 
           <Select
@@ -242,7 +257,7 @@ export default function SalesPage() {
               { value: 'Completed', label: 'Completed' },
               { value: 'Pending', label: 'Pending' },
             ]}
-            className="w-40"
+            className="w-full sm:w-40"
           />
         </div>
       </div>

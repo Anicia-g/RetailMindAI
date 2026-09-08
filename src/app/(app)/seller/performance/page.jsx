@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Award,
   TrendingUp,
@@ -22,6 +22,7 @@ import { useAuth } from '@/context/AuthContext';
 import { initialEmployees } from '@/data/employees';
 import { initialProducts } from '@/data/products';
 import { initialCustomers } from '@/data/customers';
+import { sellerService } from '@/services/sellerService';
 import { StatCard } from '@/components/common/StatCard';
 import { Badge } from '@/components/common/Badge';
 
@@ -29,6 +30,22 @@ export default function SellerPerformancePage() {
   const { user } = useAuth();
   const currentSeller =
     initialEmployees.find((e) => e.email === user?.email) || initialEmployees[0];
+
+  const [sellerMetrics, setSellerMetrics] = React.useState(null);
+
+  React.useEffect(() => {
+    async function loadMetrics() {
+      try {
+        const data = await sellerService.getSellerAnalytics({ sellerId: currentSeller.id });
+        if (data && typeof data === 'object') {
+          setSellerMetrics(data);
+        }
+      } catch (err) {
+        console.warn('Seller performance fallback:', err);
+      }
+    }
+    loadMetrics();
+  }, [currentSeller.id]);
 
   const topCustomersServed = initialCustomers.slice(0, 3);
   const bestProduct = initialProducts[0];

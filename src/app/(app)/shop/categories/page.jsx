@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, ShoppingBag } from 'lucide-react';
 import { categoryImages } from '@/lib/images';
+import { categoryService } from '@/services/categoryService';
 
 export const allSupermarketCategories = [
   {
@@ -92,6 +93,21 @@ export const allSupermarketCategories = [
 
 export default function ShopCategoriesPage() {
   const router = useRouter();
+  const [categories, setCategories] = useState(allSupermarketCategories);
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const data = await categoryService.getAllCategories();
+        if (Array.isArray(data) && data.length > 0) {
+          setCategories(data);
+        }
+      } catch (err) {
+        console.warn('Category fetch fallback:', err);
+      }
+    }
+    loadCategories();
+  }, []);
 
   return (
     <div className="space-y-8 pb-16">

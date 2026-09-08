@@ -38,6 +38,7 @@ import { initialProducts } from '@/data/products';
 import { initialEmployees } from '@/data/employees';
 import { customerService } from '@/services/customerService';
 import { productService } from '@/services/productService';
+import { sellerService } from '@/services/sellerService';
 
 export default function SellerDashboardPage() {
   const router = useRouter();
@@ -51,6 +52,7 @@ export default function SellerDashboardPage() {
 
   const [products, setProducts] = useState(initialProducts);
   const [customerAnalytics, setCustomerAnalytics] = useState(null);
+  const [sellerStats, setSellerStats] = useState(null);
   const [selectedProductForAnalysis, setSelectedProductForAnalysis] = useState(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState(null);
@@ -58,12 +60,23 @@ export default function SellerDashboardPage() {
   const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
-    // Load store-specific best customer intelligence
-    const loadCustomerData = async () => {
-      const analytics = await customerService.getBestCustomerAnalytics(currentStore);
-      setCustomerAnalytics(analytics);
+    // Load store-specific best customer intelligence, products, and seller metrics
+    const loadSellerData = async () => {
+      try {
+        const [custRes, prodsRes, statsRes] = await Promise.allSettled([
+          customerService.getBestCustomerAnalytics(currentStore),
+          productService.getProductsByStore(currentStore),
+          sellerService.getSellerDashboard({ storeId: currentStore }),
+        ]);
+
+        if (custRes.status === 'fulfilled' && custRes.value) setCustomerAnalytics(custRes.value);
+        if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value) && prodsRes.value.length > 0) setProducts(prodsRes.value);
+        if (statsRes.status === 'fulfilled' && statsRes.value) setSellerStats(statsRes.value);
+      } catch (err) {
+        console.warn('Seller dashboard load fallback:', err);
+      }
     };
-    loadCustomerData();
+    loadSellerData();
   }, [currentStore]);
 
   // Inventory alerts for seller store

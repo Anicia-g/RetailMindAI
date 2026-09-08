@@ -20,6 +20,7 @@ import { useAppSettings } from '@/context/AppSettingsContext';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { roleAIPrompts, getAIResponse } from '@/data/aiResponses';
+import { aiAssistantService } from '@/services/aiAssistantService';
 import { ROLES } from '@/lib/auth';
 
 export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRole }) {
@@ -87,7 +88,7 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSend = (queryToSend, isFromVoice = false) => {
+  const handleSend = async (queryToSend, isFromVoice = false) => {
     const text = queryToSend || inputQuery;
     if (!text || !text.trim()) return;
 
@@ -103,6 +104,33 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
     setMessages((prev) => [...prev, userMsg]);
     setInputQuery('');
     setIsTyping(true);
+
+    try {
+      const serverRes = await aiAssistantService.sendQuery(text.trim(), {
+        role: currentRole,
+        storeId: user?.storeId || user?.store,
+      });
+
+      const responseText = serverRes?.reply || serverRes?.response || serverRes?.message;
+      if (responseText) {
+        const aiMsgId = `ai-${Date.now()}`;
+        const aiMsg = {
+          id: aiMsgId,
+          sender: 'ai',
+          text: responseText,
+          actions: serverRes.actions || serverRes.suggestions?.map((s) => ({ label: s, query: s })) || [],
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+
+        if (isFromVoice && autoVoiceResponse && synth.isSupported) {
+          synth.speak(responseText, aiMsgId);
+        }
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend AI assistant fallback triggered:', err);
+    }
 
     setTimeout(() => {
       const result = getAIResponse(text, currentRole);
@@ -120,7 +148,7 @@ export function AIAssistantDrawer({ isOpen, onClose, onOpenPOModal, role: propRo
       if (isFromVoice && autoVoiceResponse && synth.isSupported) {
         synth.speak(result.response, aiMsgId);
       }
-    }, 450);
+    }, 300);
   };
 
   const speech = useSpeechRecognition({

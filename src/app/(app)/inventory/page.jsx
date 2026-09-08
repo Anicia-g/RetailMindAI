@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Boxes,
@@ -26,12 +26,28 @@ import { Modal } from '@/components/common/Modal';
 import { InventoryChart } from '@/components/charts/InventoryChart';
 import { initialInventory } from '@/data/inventory';
 import { initialProducts } from '@/data/products';
+import { inventoryService } from '@/services/inventoryService';
 
 export default function InventoryPage() {
   const router = useRouter();
   const { t } = useAppSettings();
 
   const [inventoryList, setInventoryList] = useState(initialInventory);
+
+  useEffect(() => {
+    async function loadInventory() {
+      try {
+        const data = await inventoryService.getAllInventory();
+        if (Array.isArray(data) && data.length > 0) {
+          setInventoryList(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback inventory:', err);
+      }
+    }
+    loadInventory();
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [riskFilter, setRiskFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,7 +90,7 @@ export default function InventoryPage() {
     setIsAdjustModalOpen(true);
   };
 
-  const handleSaveAdjust = (e) => {
+  const handleSaveAdjust = async (e) => {
     e.preventDefault();
     if (!activeItem) return;
 
@@ -83,9 +99,20 @@ export default function InventoryPage() {
     const newStatus = newStock <= activeItem.minStock ? 'Low Stock' : 'Healthy';
     const newRisk = newStock <= activeItem.minStock ? 'High' : 'Low';
 
+    try {
+      await inventoryService.adjustInventory({
+        productId: activeItem.productId || activeItem.id || activeItem._id,
+        storeId: activeItem.storeId || 'STR-001',
+        newQuantity: newStock,
+        reason: adjustmentReason,
+      });
+    } catch (err) {
+      console.warn('Backend inventory adjustment fallback:', err);
+    }
+
     setInventoryList(
       inventoryList.map((i) =>
-        i.id === activeItem.id
+        (i.id === activeItem.id || i._id === activeItem._id)
           ? {
               ...i,
               currentStock: newStock,
@@ -329,7 +356,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="p-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="w-full md:w-80">
           <Input
             placeholder="Search inventory items, SKUs..."
@@ -342,7 +369,7 @@ export default function InventoryPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
           <Select
             value={riskFilter}
             onChange={(e) => {
@@ -354,7 +381,7 @@ export default function InventoryPage() {
               { value: 'High', label: 'High & Critical Risk' },
               { value: 'Low', label: 'Low Risk / Healthy' },
             ]}
-            className="w-48"
+            className="w-full sm:w-48"
           />
         </div>
       </div>

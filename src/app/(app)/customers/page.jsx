@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   Sparkles,
@@ -31,12 +31,34 @@ import { CustomerClusteringModal } from '@/components/intelligence/CustomerClust
 import { CustomerDetailModal } from '@/components/intelligence/CustomerDetailModal';
 import { initialCustomers, initialCustomerClusters } from '@/data/customers';
 import { initialStores } from '@/data/stores';
+import { customerService } from '@/services/customerService';
 
 export default function CustomersPage() {
   const { t } = useAppSettings();
 
   const [customerList, setCustomerList] = useState(initialCustomers);
   const [clusters, setClusters] = useState(initialCustomerClusters);
+
+  useEffect(() => {
+    async function loadCustomersData() {
+      try {
+        const [custRes, clustRes] = await Promise.allSettled([
+          customerService.getAllCustomers(),
+          customerService.getCustomerClusters(),
+        ]);
+        if (custRes.status === 'fulfilled' && Array.isArray(custRes.value) && custRes.value.length > 0) {
+          setCustomerList(custRes.value);
+        }
+        if (clustRes.status === 'fulfilled' && Array.isArray(clustRes.value) && clustRes.value.length > 0) {
+          setClusters(clustRes.value);
+        }
+      } catch (err) {
+        console.warn('Using local fallback customers:', err);
+      }
+    }
+    loadCustomersData();
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [segmentFilter, setSegmentFilter] = useState('All');
   const [storeFilter, setStoreFilter] = useState('All');
@@ -119,7 +141,7 @@ export default function CustomersPage() {
     setIsDetailModalOpen(true);
   };
 
-  const handleSaveAdd = (e) => {
+  const handleSaveAdd = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.email.trim()) return;
 
@@ -146,34 +168,53 @@ export default function CustomersPage() {
       ]
     };
 
-    setCustomerList([newCust, ...customerList]);
+    try {
+      const created = await customerService.createCustomer(newCust);
+      setCustomerList([created || newCust, ...customerList]);
+    } catch (err) {
+      console.warn('Backend customer create fallback:', err);
+      setCustomerList([newCust, ...customerList]);
+    }
     setIsAddModalOpen(false);
   };
 
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!activeCustomer) return;
 
+    const custId = activeCustomer.id || activeCustomer._id;
+    const updatedCust = {
+      ...activeCustomer,
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone,
+      segment: formData.segment,
+      preferredStore: formData.preferredStore,
+    };
+
+    try {
+      await customerService.updateCustomer(custId, updatedCust);
+    } catch (err) {
+      console.warn('Backend customer update fallback:', err);
+    }
+
     setCustomerList(
       customerList.map((c) =>
-        c.id === activeCustomer.id
-          ? {
-              ...c,
-              name: formData.name,
-              email: formData.email,
-              phone: formData.phone,
-              segment: formData.segment,
-              preferredStore: formData.preferredStore,
-            }
-          : c
+        (c.id === activeCustomer.id || c._id === activeCustomer._id) ? updatedCust : c
       )
     );
     setIsEditModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (activeCustomer) {
-      setCustomerList(customerList.filter((c) => c.id !== activeCustomer.id));
+      const custId = activeCustomer.id || activeCustomer._id;
+      try {
+        await customerService.deleteCustomer(custId);
+      } catch (err) {
+        console.warn('Backend customer delete fallback:', err);
+      }
+      setCustomerList(customerList.filter((c) => (c.id !== custId && c._id !== custId)));
       setIsDeleteDialogOpen(false);
       setActiveCustomer(null);
     }
@@ -394,7 +435,7 @@ export default function CustomersPage() {
               setCurrentPage(1);
             }}
             options={storeOptions.map((st) => ({ value: st, label: st === 'All' ? 'All Stores' : st.split('(')[0] }))}
-            className="w-44"
+            className="w-full sm:w-44"
           />
 
           <Select
@@ -410,7 +451,7 @@ export default function CustomersPage() {
               { value: 'Growing', label: 'Growing / Emerging' },
               { value: 'At Risk', label: 'At Risk / Churning' },
             ]}
-            className="w-48"
+            className="w-full sm:w-48"
           />
         </div>
       </div>

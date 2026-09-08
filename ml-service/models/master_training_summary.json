@@ -1,0 +1,39 @@
+{
+  "customerSegmentation": {
+    "algorithm": "K-Means Clustering",
+    "k": 5,
+    "silhouetteScore": 0.5358,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "demandForecasting": {
+    "algorithms": [
+      "ARIMA(2,1,1)",
+      "Holt-Winters Exponential Smoothing"
+    ],
+    "productsCount": 6,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "inventoryRisk": {
+    "bestModel": "GradientBoosting",
+    "macroF1": 0.9931,
+    "accuracy": 0.9917,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "discountDecisionTrees": {
+    "id3Accuracy": 0.9714,
+    "c45Accuracy": 0.9714,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "recommendations": {
+    "algorithm": "Item-Item Co-occurrence Association Mining",
+    "totalBaskets": 800,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "anomalyDetection": {
+    "algorithm": "Isolation Forest",
+    "contamination": 0.04,
+    "status": "TRAINED_AND_PERSISTED"
+  },
+  "pipelineExecutionTimeSeconds": 1.28,
+  "status": "ALL_MODELS_TRAINED_SUCCESSFULLY"
+}

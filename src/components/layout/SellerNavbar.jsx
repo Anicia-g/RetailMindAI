@@ -52,7 +52,32 @@ export function SellerNavbar({ onOpenMobileSidebar, onOpenAIAssistant, onOpenRec
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const sellerNotifications = [
+  const [liveNotifications, setLiveNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(1);
+
+  useEffect(() => {
+    import('@/services/notificationService').then(({ notificationService }) => {
+      notificationService.getNotifications({ limit: 5 }).then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map((n) => ({
+            id: n.id || n._id,
+            title: n.title,
+            desc: n.message,
+            time: 'Live',
+            icon: n.priority === 'CRITICAL' ? AlertCircle : CheckCircle2,
+            color: n.priority === 'CRITICAL' ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/40' : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40',
+            route: n.actionUrl || '/seller/inventory',
+          }));
+          setLiveNotifications(formatted);
+        }
+      });
+      notificationService.getUnreadCount().then((count) => {
+        if (typeof count === 'number') setUnreadCount(count);
+      });
+    });
+  }, [isNotifOpen]);
+
+  const defaultSellerNotifications = [
     {
       id: 'sn-1',
       title: 'Store Low Stock (Milk 1L)',
@@ -81,6 +106,8 @@ export function SellerNavbar({ onOpenMobileSidebar, onOpenAIAssistant, onOpenRec
       route: '/seller/inventory',
     },
   ];
+
+  const sellerNotifications = liveNotifications.length > 0 ? liveNotifications : defaultSellerNotifications;
 
   const getPageTitle = () => {
     if (!pathname) return t('sellerDashboard');

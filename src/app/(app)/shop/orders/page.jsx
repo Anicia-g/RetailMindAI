@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Package,
@@ -17,10 +17,29 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
+import { orderService } from '@/services/orderService';
 
 export default function ShopOrdersPage() {
-  const { customerOrders, addToCart } = useAuth();
+  const { customerOrders, addToCart, user } = useAuth();
+  const [orders, setOrders] = useState(customerOrders);
   const [reorderedId, setReorderedId] = useState('');
+
+  useEffect(() => {
+    async function loadOrders() {
+      try {
+        const data = await orderService.getCustomerOrders({ customerEmail: user?.email });
+        if (Array.isArray(data) && data.length > 0) {
+          setOrders(data);
+        } else {
+          setOrders(customerOrders);
+        }
+      } catch (err) {
+        console.warn('Customer orders fetch fallback:', err);
+        setOrders(customerOrders);
+      }
+    }
+    loadOrders();
+  }, [customerOrders, user?.email]);
 
   const handleReorder = (order) => {
     order.items?.forEach((item) => {

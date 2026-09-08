@@ -144,7 +144,10 @@ export function generateToken(user) {
     return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   } catch (err) {
     // Client-side / edge safe base64 token generation fallback
-    return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${btoa(JSON.stringify(payload))}.mock_signature`;
+    const encoded = typeof btoa !== 'undefined' 
+      ? btoa(unescape(encodeURIComponent(JSON.stringify(payload)))) 
+      : Buffer.from(JSON.stringify(payload)).toString('base64');
+    return `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${encoded}.mock_signature`;
   }
 }
 
@@ -159,7 +162,10 @@ export function decodeToken(token) {
 
     const parts = token.split('.');
     if (parts.length >= 2) {
-      return JSON.parse(atob(parts[1]));
+      const decodedStr = typeof atob !== 'undefined' 
+        ? decodeURIComponent(escape(atob(parts[1]))) 
+        : Buffer.from(parts[1], 'base64').toString('utf-8');
+      return JSON.parse(decodedStr);
     }
   } catch (e) {
     console.error('Error decoding JWT token:', e);
@@ -174,7 +180,26 @@ export async function authenticateWithCredentials(email, password) {
   const normalizedEmail = (email || '').trim().toLowerCase();
   const cleanPassword = (password || '').trim();
 
-  // Find user in database
+  // 1. First attempt authenticating with Express REST API Backend
+  try {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const res = await fetch(`${apiBase}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, password: cleanPassword }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.data && data.data.token) {
+        return data.data;
+      }
+    }
+  } catch (apiErr) {
+    // If Express backend is offline or during SSR, proceed to client-side fallback
+  }
+
+  // 2. Resilient local fallback
   let user = MOCK_USERS_DB.find((u) => u.email.toLowerCase() === normalizedEmail);
 
   // Dynamic fallback for any custom user input if testing

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Flame, Star, ShoppingCart, TrendingUp, Package, Trophy, ArrowRight, Store } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { initialProducts } from '@/data/products';
+import { productService } from '@/services/productService';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 
@@ -11,7 +12,21 @@ export default function SellerBestSellersPage() {
   const { user } = useAuth();
   const currentStore = user?.store || 'Indiranagar Flagship (Store 01)';
 
-  const [products] = useState(initialProducts);
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    async function loadBestSellers() {
+      try {
+        const data = await productService.getAllProducts();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      } catch (err) {
+        console.warn('Seller best sellers fallback:', err);
+      }
+    }
+    loadBestSellers();
+  }, []);
 
   const bestSellers = [...products]
     .sort((a, b) => (b.unitsSold || 0) - (a.unitsSold || 0));

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Store,
   Plus,
@@ -26,11 +26,26 @@ import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { initialStores } from '@/data/stores';
+import { storeService } from '@/services/storeService';
 
 export default function StoresPage() {
   const { t } = useAppSettings();
 
   const [stores, setStores] = useState(initialStores);
+
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const data = await storeService.getAllStores();
+        if (Array.isArray(data) && data.length > 0) {
+          setStores(data);
+        }
+      } catch (err) {
+        console.warn('Using local fallback stores:', err);
+      }
+    }
+    loadStores();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;

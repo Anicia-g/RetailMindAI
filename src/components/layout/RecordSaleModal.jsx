@@ -1,25 +1,41 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Plus, Trash2, CheckCircle2, User, CreditCard, Banknote, QrCode } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { initialProducts } from '@/data/products';
+import { productService } from '@/services/productService';
+import { posService } from '@/services/posService';
 
 export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
-  const [products] = useState(initialProducts);
+  const [products, setProducts] = useState(initialProducts);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [cartItems, setCartItems] = useState([
-    { productId: products[0].id, quantity: 1 },
+    { productId: products[0]?.id || 'prod-001', quantity: 1 },
   ]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      productService.getAllProducts().then((data) => {
+        if (data && data.length > 0) {
+          setProducts(data);
+          setCartItems([{ productId: data[0].id || data[0].productId, quantity: 1 }]);
+        }
+      });
+    }
+  }, [isOpen]);
 
   const handleAddItem = () => {
-    setCartItems([...cartItems, { productId: products[0].id, quantity: 1 }]);
+    const firstProd = products[0]?.id || products[0]?.productId || 'prod-001';
+    setCartItems([...cartItems, { productId: firstProd, quantity: 1 }]);
   };
 
   const handleRemoveItem = (index) => {
@@ -40,16 +56,20 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
 
   const calculateTotal = () => {
     return cartItems.reduce((acc, item) => {
-      const prod = products.find((p) => p.id === item.productId);
+      const prod = products.find((p) => p.id === item.productId || p.productId === item.productId);
       return acc + (prod ? prod.price * item.quantity : 0);
     }, 0);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+    setIsLoading(true);
+
     const orderItems = cartItems.map((item) => {
-      const prod = products.find((p) => p.id === item.productId);
+      const prod = products.find((p) => p.id === item.productId || p.productId === item.productId);
       return {
+        productId: prod?.productId || prod?.id || item.productId,
         name: prod?.name || 'Product',
         sku: prod?.sku || 'SKU',
         qty: item.quantity,
@@ -57,29 +77,31 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
       };
     });
 
-    const newSale = {
-      id: `pos-${Date.now().toString().slice(-4)}`,
+    const salePayload = {
       customerName: customerName.trim() || 'Walk-in Customer',
-      phone: customerPhone.trim() || '+91 98450 00000',
-      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      itemsCount: cartItems.reduce((acc, i) => acc + i.quantity, 0),
-      totalAmount: calculateTotal(),
-      status: 'Completed',
+      customerPhone: customerPhone.trim() || '+91 98450 00000',
       paymentMethod,
-      store: 'Indiranagar Flagship (Store 01)',
       items: orderItems,
+      discountAmount: 0,
     };
 
-    setIsSuccess(true);
-    setTimeout(() => {
-      if (onSaleRecorded) onSaleRecorded(newSale);
-      setIsSuccess(false);
-      onClose();
-      // Reset
-      setCustomerName('');
-      setCustomerPhone('');
-      setCartItems([{ productId: products[0].id, quantity: 1 }]);
-    }, 1000);
+    try {
+      const result = await posService.processSale(salePayload);
+      setIsLoading(false);
+      setIsSuccess(true);
+      setTimeout(() => {
+        if (onSaleRecorded) onSaleRecorded(result?.order || salePayload);
+        setIsSuccess(false);
+        onClose();
+        // Reset
+        setCustomerName('');
+        setCustomerPhone('');
+        setCartItems([{ productId: products[0]?.id || 'prod-001', quantity: 1 }]);
+      }, 1000);
+    } catch (err) {
+      setIsLoading(false);
+      setErrorMessage(err.message || 'Error processing sale on server.');
+    }
   };
 
   return (
@@ -102,6 +124,12 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+              {errorMessage}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Customer Name (Optional)"
@@ -131,7 +159,7 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
 
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {cartItems.map((item, idx) => {
-                const prod = products.find((p) => p.id === item.productId);
+                const prod = products.find((p) => p.id === item.productId || p.productId === item.productId);
                 return (
                   <div
                     key={idx}
@@ -144,7 +172,7 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none"
                       >
                         {products.map((p) => (
-                          <option key={p.id} value={p.id}>
+                          <option key={p.id || p.productId} value={p.id || p.productId}>
                             {p.name} — ₹{p.price} ({p.stock} in store)
                           </option>
                         ))}
@@ -220,13 +248,14 @@ export function RecordSaleModal({ isOpen, onClose, onSaleRecorded }) {
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" type="button" onClick={onClose}>
+            <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={isLoading}>
               Cancel
             </Button>
             <Button
               variant="primary"
               size="md"
               type="submit"
+              loading={isLoading}
               icon={ShoppingCart}
               className="bg-purple-600 hover:bg-purple-700 font-bold shadow-md shadow-purple-600/30"
             >

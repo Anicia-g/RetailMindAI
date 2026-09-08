@@ -20,6 +20,7 @@ import { Select } from '@/components/common/Select';
 import { Input } from '@/components/common/Input';
 import { Badge } from '@/components/common/Badge';
 import { WhatsAppConsentToggle } from '@/components/customer/WhatsAppConsentToggle';
+import { settingService } from '@/services/settingService';
 
 export default function SettingsPage() {
   const {
@@ -44,8 +45,13 @@ export default function SettingsPage() {
 
   const [notification, setNotification] = useState(null);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const success = saveSettings();
+    try {
+      await settingService.updateSettings(settings);
+    } catch (err) {
+      console.warn('Backend settings update fallback:', err);
+    }
     if (success) {
       setNotification({ type: 'success', message: t('settingsSavedSuccessfully') });
       setTimeout(() => setNotification(null), 3000);

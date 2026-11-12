@@ -1,5 +1,5 @@
-const Product = require('../../models/Product');
-const AiRecommendation = require('../../models/AiRecommendation');
+const productRepository = require('../../repositories/productRepository');
+const aiRecommendationRepository = require('../../repositories/aiRecommendationRepository');
 const mlClientService = require('../mlClientService');
 
 class DiscountIntelligenceService {
@@ -8,7 +8,11 @@ class DiscountIntelligenceService {
    * combined with shelf-life expiry, stock velocity, and gross margin protection.
    */
   async evaluateProductDiscount(productId, modelType = 'C4.5') {
-    const product = await Product.findOne({ productId, bit_IsActive: true }).lean();
+    let product = await productRepository.getById(productId);
+    if (!product) {
+      const bySku = await productRepository.getAll({ txt_Product_Code: productId });
+      product = bySku[0];
+    }
     if (!product) {
       throw new Error(`Product not found: ${productId}`);
     }
@@ -95,10 +99,10 @@ class DiscountIntelligenceService {
     }
 
     const recommendationData = {
-      productId: product.productId,
+      productId: String(product.productId),
       productName: product.name,
       category: product.category,
-      storeId: product.storeId || 'store-01',
+      storeId: String(product.storeId || '1'),
       storeName: product.store || 'Indiranagar Flagship',
       originalPrice: price,
       costPrice,
@@ -124,50 +128,22 @@ class DiscountIntelligenceService {
 
     // Asynchronously persist to tbl_AI_Recommendation if actionable discount > 0
     if (recommendedDiscount > 0) {
-      AiRecommendation.findOneAndUpdate(
-        {
-          recommendationType: 'DISCOUNT',
+      try {
+        await aiRecommendationRepository.create({
+          type: 'DISCOUNT',
           productId: product.productId,
-          bit_IsActive: true,
-        },
-        {
-          $set: {
-            recommendationType: 'DISCOUNT',
-            productId: product.productId,
-            productName: product.name,
-            storeId: product.storeId || 'store-01',
-            priority: expiryDays <= 4 ? 'CRITICAL' : expiryDays <= 7 ? 'HIGH' : 'MEDIUM',
-            status: 'ACTIVE',
-            source: `${modelType}_DECISION_TREE`,
-            recommendation: `Apply ${recommendedDiscount}% promotional markdown on ${product.name} (Current: ₹${price} → New: ₹${discountedPrice})`,
-            reason,
-            explanation,
-            currentStock: stock,
-            recommendedDiscount,
-            discountFormatted: `${recommendedDiscount}%`,
-            modelUsed: modelType,
-            confidence,
-            importantFactors,
-            decisionPath,
-            metrics: {
-              originalPrice: price,
-              discountedPrice,
-              costPrice,
-              postDiscountMarginPct,
-              expiryDays,
-              projectedDailyVelocity,
-            },
-            generatedDate: new Date(),
-            dte_Modified_Date: new Date(),
-          },
-          $setOnInsert: {
-            txt_Created_By: 'system',
-            dte_Created_Date: new Date(),
-            bit_IsActive: true,
-          },
-        },
-        { upsert: true, new: true }
-      ).catch((err) => console.warn('[DiscountIntelligenceService] Persistence notice:', err.message));
+          storeId: product.storeId || 1,
+          title: `Apply ${recommendedDiscount}% promotional markdown on ${product.name}`,
+          description: reason,
+          confidenceScore: confidence,
+          status: 'Active',
+          modelName: `${modelType}_DECISION_TREE`,
+          expectedImpact: Math.round(price * recommendedDiscount * 0.1),
+          isActive: true,
+        });
+      } catch (err) {
+        // Continue silently
+      }
     }
 
     return recommendationData;
@@ -177,12 +153,12 @@ class DiscountIntelligenceService {
    * Retrieves high-priority discount candidates for store managers and sellers
    */
   async getDiscountCandidates(storeId = null, limit = 10) {
-    const productQuery = { bit_IsActive: true };
+    const filter = { bit_IsActive: true };
     if (storeId && storeId !== 'All' && storeId !== 'all') {
-      productQuery.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
+      filter.int_Store_Id = storeId;
     }
 
-    const products = await Product.find(productQuery).lean();
+    const products = await productRepository.getAll(filter);
 
     // Prioritize candidates with short expiry or slow moving inventory
     const candidates = products
@@ -212,3 +188,4 @@ class DiscountIntelligenceService {
 }
 
 module.exports = new DiscountIntelligenceService();
+

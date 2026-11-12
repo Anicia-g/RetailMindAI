@@ -2,9 +2,8 @@ const salesAnalyticsService = require('./salesAnalyticsService');
 const inventoryAnalyticsService = require('./inventoryAnalyticsService');
 const customerAnalyticsService = require('./customerAnalyticsService');
 const sellerAnalyticsService = require('./sellerAnalyticsService');
-const Product = require('../models/Product');
-const Customer = require('../models/Customer');
-const Order = require('../models/Order');
+const orderRepository = require('../repositories/orderRepository');
+const db = require('../config/db');
 
 class AdminAnalyticsService {
   /**
@@ -29,12 +28,23 @@ class AdminAnalyticsService {
     const todaySales = todayRevenueData.totalRevenue || 84200;
 
     // Recent transaction orders
-    const recentOrders = await Order.find({
-      bit_IsActive: true,
-      status: { $in: ['Completed', 'Delivered'] },
-    })
-      .sort({ createdAt: -1 })
-      .limit(6);
+    const recentOrdersSql = `
+      SELECT 
+        o.int_Order_Id AS orderId,
+        o.txt_Order_Number AS orderNumber,
+        CONCAT(c.txt_First_Name, ' ', COALESCE(c.txt_Last_Name, '')) AS customerName,
+        o.dec_Total_Amount AS totalAmount,
+        o.txt_Order_Status AS status,
+        COALESCE(pm.txt_Payment_Method_Name, 'UPI') AS paymentMethod,
+        o.dte_Created_Date AS createdAt
+      FROM tbl_Order o
+      LEFT JOIN tbl_Customer c ON o.int_Customer_Id = c.int_Customer_Id
+      LEFT JOIN tbl_Payment_Method pm ON o.int_Payment_Method_Id = pm.int_Payment_Method_Id
+      WHERE o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')
+      ORDER BY o.dte_Created_Date DESC
+      LIMIT 6
+    `;
+    const recentOrders = await db.query(recentOrdersSql);
 
     return {
       kpis: {
@@ -63,7 +73,16 @@ class AdminAnalyticsService {
       starSellers: sellerRankings.slice(0, 5),
       lowStockProducts: inventoryData.lowStockProducts || [],
       criticalStockProducts: inventoryData.criticalStockProducts || [],
-      recentTransactions: recentOrders,
+      recentTransactions: recentOrders.map((o) => ({
+        id: String(o.orderId),
+        orderId: String(o.orderId),
+        orderNumber: o.orderNumber,
+        customerName: o.customerName || 'Walk-in Customer',
+        totalAmount: Number(o.totalAmount),
+        status: o.status,
+        paymentMethod: o.paymentMethod || 'UPI',
+        createdAt: o.createdAt,
+      })),
       aiInsights: [
         'Dairy & Bakery velocity surged +24% across Southern branches; restock replenishment triggered.',
         'K-Means clustering identified 34 VIP customers generating 62% of platform gross revenue.',
@@ -82,3 +101,4 @@ class AdminAnalyticsService {
 }
 
 module.exports = new AdminAnalyticsService();
+

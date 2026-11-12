@@ -1,12 +1,12 @@
 {
   "name": "retailmind-backend",
   "version": "1.0.0",
-  "description": "Node.js and Express REST API backend with MongoDB, RBAC, and ML services for RetailMind AI",
+  "description": "Node.js and Express REST API backend with MySQL (XAMPP), RBAC, and ML services for RetailMind AI",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "seed": "node src/seed.js",
+    "seed": "node src/utils/seedMySQL.js",
     "test": "node src/tests/runTests.js"
   },
   "dependencies": {
@@ -18,17 +18,17 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.6.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "mysql2": "^3.24.4"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.4"
   },
   "keywords": [
     "retailmind",
     "express",
-    "mongodb",
+    "mysql",
+    "xampp",
     "retail",
     "pos",
     "ml",

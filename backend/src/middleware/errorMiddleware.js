@@ -10,25 +10,34 @@ const errorHandler = (err, req, res, next) => {
   let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   let message = err.message || 'Internal Server Error';
 
-  // Handle Mongoose Bad ObjectId (CastError)
-  if (err.name === 'CastError') {
-    statusCode = 400;
-    message = `Invalid ID format: ${err.value}`;
-  }
-
-  // Handle Mongoose Duplicate Key Error
-  if (err.code === 11000) {
+  // Handle MySQL Duplicate Entry (ER_DUP_ENTRY)
+  if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
     statusCode = 409;
-    const field = Object.keys(err.keyValue || {})[0] || 'field';
-    message = `Duplicate value entered for '${field}'. Must be unique.`;
+    message = 'A record with this unique value already exists.';
   }
 
-  // Handle Mongoose Validation Error
-  if (err.name === 'ValidationError') {
-    statusCode = 422;
-    message = Object.values(err.errors)
-      .map((val) => val.message)
-      .join(', ');
+  // Handle MySQL Foreign Key Constraint Error (ER_NO_REFERENCED_ROW_2)
+  if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.errno === 1452) {
+    statusCode = 400;
+    message = 'Referenced related record does not exist.';
+  }
+
+  // Handle MySQL Foreign Key Delete Restrict (ER_ROW_IS_REFERENCED_2)
+  if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
+    statusCode = 409;
+    message = 'Cannot delete or update record as it is referenced by other records.';
+  }
+
+  // Handle MySQL Data Too Long (ER_DATA_TOO_LONG)
+  if (err.code === 'ER_DATA_TOO_LONG' || err.errno === 1406) {
+    statusCode = 400;
+    message = 'Provided input exceeds maximum allowable field length.';
+  }
+
+  // Handle MySQL Bad Null Error (ER_BAD_NULL_ERROR)
+  if (err.code === 'ER_BAD_NULL_ERROR' || err.errno === 1048) {
+    statusCode = 400;
+    message = 'A required field cannot be null.';
   }
 
   // Handle JWT Error

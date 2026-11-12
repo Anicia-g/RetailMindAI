@@ -1,19 +1,18 @@
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
+const productRepository = require('../repositories/productRepository');
 
 class InventoryRiskService {
   async evaluateInventoryRisk(storeId = null) {
-    const query = { bit_IsActive: true };
-    if (storeId && storeId !== 'All') {
-      query.$or = [{ storeId }, { 'storeAssignments.storeId': storeId }];
+    const filter = { bit_IsActive: true };
+    if (storeId && storeId !== 'All' && storeId !== 'all') {
+      filter.int_Store_Id = storeId;
     }
 
-    const products = await Product.find(query);
+    const products = await productRepository.getAll(filter);
 
     const riskAssessments = products.map((product) => {
-      const stock = product.stock || 0;
-      const reorderLevel = product.reorderLevel || 20;
-      const velocity = product.dailyVelocity || 1;
+      const stock = Number(product.stock) || 0;
+      const reorderLevel = Number(product.reorderLevel) || 20;
+      const velocity = Number(product.dailyVelocity) || 1;
 
       const expectedStockOutDays = velocity > 0 ? Number((stock / velocity).toFixed(1)) : 30;
 
@@ -37,7 +36,7 @@ class InventoryRiskService {
       );
 
       return {
-        productId: product.productId,
+        productId: String(product.productId),
         productName: product.name,
         sku: product.sku,
         category: product.category,
@@ -49,10 +48,10 @@ class InventoryRiskService {
         stockOutProbability,
         expectedStockOutDays,
         riskLevel,
-        status: product.stockStatus,
+        status: product.stockStatus || (stock <= 0 ? 'Out of Stock' : stock <= reorderLevel ? 'Low Stock' : 'In Stock'),
         recommendedReorderQuantity,
-        supplier: product.supplier,
-        supplierId: product.supplierId,
+        supplier: product.supplier || 'Primary Supplier',
+        supplierId: String(product.supplierId || '1'),
         urgency:
           riskLevel === 'HIGH'
             ? 'Urgent morning restock required'
@@ -64,7 +63,7 @@ class InventoryRiskService {
 
     // Sort by highest risk first
     const riskPriority = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-    riskAssessments.sort((a, b) => riskPriority[b.riskLevel] - riskPriority[a.riskLevel]);
+    riskAssessments.sort((a, b) => (riskPriority[b.riskLevel] || 0) - (riskPriority[a.riskLevel] || 0));
 
     return {
       success: true,
@@ -78,3 +77,4 @@ class InventoryRiskService {
 }
 
 module.exports = new InventoryRiskService();
+

@@ -6,7 +6,7 @@ const anomalyInsightService = require('./anomalyInsightService');
 const salesAnalyticsService = require('../salesAnalyticsService');
 const sellerAnalyticsService = require('../sellerAnalyticsService');
 const inventoryAnalyticsService = require('../inventoryAnalyticsService');
-const AiRecommendation = require('../../models/AiRecommendation');
+const aiRecommendationRepository = require('../../repositories/aiRecommendationRepository');
 
 class IntelligenceService {
   /**
@@ -17,7 +17,7 @@ class IntelligenceService {
     const effectiveStore = userRole === 'SELLER' ? (user?.storeId || user?.store || storeId) : storeId;
 
     if (userRole === 'CUSTOMER') {
-      const customerId = user?.id || user?.customerId || 'cust-001';
+      const customerId = user?.id || user?.customerId || '1';
       return await customerInsightService.getCustomerPersonalizedFeed(customerId);
     }
 
@@ -38,7 +38,7 @@ class IntelligenceService {
         healthStatus: criticalAlerts.length > 0 ? 'NEEDS_ATTENTION' : 'OPTIMAL',
         lowStockAisleAlerts: criticalAlerts,
         discountOpportunities: discounts,
-        inventoryHealthBreakdown: inventorySummary?.healthDistribution || {},
+        inventoryHealthBreakdown: inventorySummary?.distribution || {},
         topLocalSellers: (sellerPerformance || []).slice(0, 3),
         generatedDate: new Date(),
       };
@@ -107,9 +107,9 @@ class IntelligenceService {
     return {
       role: 'ADMIN',
       enterpriseSummary: {
-        totalRevenue: revenueData?.metrics?.totalRevenue || 0,
-        growthPercentage: revenueData?.metrics?.growthPercentage || 0,
-        totalInventoryValue: inventorySummary?.metrics?.totalInventoryValue || 0,
+        totalRevenue: revenueData?.totalRevenue || 0,
+        growthPercentage: revenueData?.growthPercentage || 0,
+        totalInventoryValue: inventorySummary?.inventoryValue || 0,
         criticalStockoutRisksCount: criticalReorders.length,
         totalCustomersSegmented: customerSegments?.totalCustomers || 0,
         unusualTransactionsCount: anomalies?.unusualTransactionsCount || 0,
@@ -131,46 +131,25 @@ class IntelligenceService {
    * Retrieves active, persistent recommendations from tbl_AI_Recommendation
    */
   async getActiveRecommendations({ type = null, priority = null, storeId = null, limit = 20 }) {
-    const query = { bit_IsActive: true, status: 'ACTIVE' };
+    const filter = { bit_IsActive: true };
+    if (type) filter.txt_Recommendation_Type = type;
+    if (storeId && storeId !== 'All' && storeId !== 'all') filter.int_Store_Id = storeId;
 
-    if (type) {
-      query.recommendationType = type;
-    }
-    if (priority) {
-      query.priority = priority;
-    }
-    if (storeId && storeId !== 'All' && storeId !== 'all') {
-      query.$or = [{ storeId }, { storeId: '' }];
-    }
-
-    return await AiRecommendation.find(query)
-      .sort({ generatedDate: -1, priority: 1 })
-      .limit(limit)
-      .lean();
+    const recs = await aiRecommendationRepository.getAll(filter);
+    return recs.slice(0, limit);
   }
 
   /**
    * Mark a recommendation as applied or actioned
    */
   async applyRecommendation(id, userEmail = 'system') {
-    const doc = await AiRecommendation.findByIdAndUpdate(
-      id,
-      {
-        $set: {
-          status: 'APPLIED',
-          txt_Modified_By: userEmail,
-          dte_Modified_Date: new Date(),
-        },
-      },
-      { new: true }
-    );
-
-    if (!doc) {
-      throw new Error(`Recommendation ${id} not found`);
-    }
-
-    return doc;
+    return await aiRecommendationRepository.update(id, {
+      txt_Recommendation_Status: 'Applied',
+      txt_Action_Taken: 'Actioned by user',
+      dte_Action_Date: new Date(),
+    });
   }
 }
 
 module.exports = new IntelligenceService();
+

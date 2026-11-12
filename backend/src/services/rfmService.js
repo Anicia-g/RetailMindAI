@@ -1,32 +1,33 @@
-const Customer = require('../models/Customer');
-const Order = require('../models/Order');
+const customerRepository = require('../repositories/customerRepository');
+const db = require('../config/db');
 
 class RfmService {
   /**
    * Calculates RFM metrics (Recency in days, Frequency of purchases, Monetary total spend)
-   * from live MongoDB transaction history.
+   * from live MySQL transaction history.
    */
   async calculateCustomerRFM(customerId) {
-    const customer = await Customer.findOne({
-      $or: [{ customerId }, { _id: customerId.match(/^[0-9a-fA-F]{24}$/) ? customerId : null }],
-    });
+    const customer = await customerRepository.getById(customerId) || 
+      (await customerRepository.getAll({ txt_Customer_Name: customerId }))[0];
 
     if (!customer) {
       throw new Error(`Customer '${customerId}' not found.`);
     }
 
-    const orders = await Order.find({
-      $or: [{ customerId: customer.customerId }, { customerName: customer.name }],
-      status: { $ne: 'Cancelled' },
-    }).sort({ createdAt: -1 });
+    const ordersSql = `
+      SELECT * FROM tbl_Order
+      WHERE int_Customer_Id = ? AND bit_IsActive = 1 AND txt_Order_Status != 'Cancelled'
+      ORDER BY dtm_Created_At DESC
+    `;
+    const orders = await db.query(ordersSql, [customer.customerId]);
 
-    const frequency = orders.length || customer.orders || 1;
-    const monetary = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || customer.totalSpent || 5000;
+    const frequency = orders.length || customer.totalOrders || 1;
+    const monetary = orders.reduce((sum, o) => sum + (Number(o.dec_Total_Amount) || 0), 0) || customer.totalSpent || 5000;
 
-    let recencyDays = customer.recencyDays;
+    let recencyDays = 30;
     if (orders.length > 0) {
-      const latestOrderDate = orders[0].createdAt || new Date(orders[0].date);
-      const diffTime = Math.abs(new Date() - new Date(latestOrderDate));
+      const latestOrderDate = orders[0].dtm_Created_At ? new Date(orders[0].dtm_Created_At) : new Date();
+      const diffTime = Math.abs(new Date() - latestOrderDate);
       recencyDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     }
 
@@ -36,7 +37,7 @@ class RfmService {
     const mScore = monetary >= 100000 ? 5 : monetary >= 50000 ? 4 : monetary >= 20000 ? 3 : monetary >= 5000 ? 2 : 1;
 
     return {
-      customerId: customer.customerId,
+      customerId: String(customer.customerId),
       name: customer.name,
       recencyDays,
       frequency,
@@ -51,7 +52,7 @@ class RfmService {
   }
 
   async calculateAllCustomersRFM() {
-    const customers = await Customer.find({ bit_IsActive: true });
+    const customers = await customerRepository.getAll({ bit_IsActive: true });
     const rfmResults = [];
 
     for (const c of customers) {
@@ -64,3 +65,4 @@ class RfmService {
 }
 
 module.exports = new RfmService();
+

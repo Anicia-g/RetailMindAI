@@ -1,4 +1,4 @@
-const Product = require('../models/Product');
+const productRepository = require('../repositories/productRepository');
 
 class DemandForecastingService {
   /**
@@ -7,17 +7,18 @@ class DemandForecastingService {
    * @param {number} days (7, 14, or 30)
    */
   async getForecast(productId, days = 14) {
-    const product = await Product.findOne({
-      $or: [{ productId }, { sku: productId }, { _id: productId.match(/^[0-9a-fA-F]{24}$/) ? productId : null }],
-      bit_IsActive: true,
-    });
+    let product = await productRepository.getById(productId);
+    if (!product) {
+      const bySku = await productRepository.getAll({ txt_Product_Code: productId });
+      product = bySku[0];
+    }
 
     if (!product) {
       throw new Error(`Product '${productId}' not found for demand forecasting.`);
     }
 
-    const baselineVelocity = product.dailyVelocity || 5.0;
-    const isGrowing = (product.velocityChange || '').startsWith('+');
+    const baselineVelocity = Number(product.dailyVelocity) || 5.0;
+    const isGrowing = String(product.velocityChange || '').startsWith('+');
     const growthRate = isGrowing ? 0.08 : -0.04;
 
     const periods = [
@@ -29,7 +30,7 @@ class DemandForecastingService {
     const targetPeriod = periods.find((p) => p.days === Number(days)) || periods[1];
     const predictedDailyDemand = Number((baselineVelocity * (1 + growthRate * (targetPeriod.days / 7))).toFixed(1));
     const totalPredictedDemand = Math.round(predictedDailyDemand * targetPeriod.days);
-    const recommendedStock = Math.max(0, totalPredictedDemand - (product.stock || 0) + (product.reorderLevel || 20));
+    const recommendedStock = Math.max(0, totalPredictedDemand - (Number(product.stock) || 0) + (Number(product.reorderLevel) || 20));
 
     // Generate forecast time-series points
     const timeSeries = [];
@@ -62,23 +63,24 @@ class DemandForecastingService {
     });
 
     return {
-      productId: product.productId,
+      productId: String(product.productId),
       productName: product.name,
       sku: product.sku,
       category: product.category,
       modelUsed: 'ARIMA(1,1,1) + Holt-Winters Triple Exponential Smoothing',
       forecastHorizonDays: targetPeriod.days,
       confidenceScore: '94%',
-      currentStock: product.stock,
+      currentStock: Number(product.stock) || 0,
       currentDailyDemand: baselineVelocity,
       predictedDailyDemand,
       totalPredictedDemand,
       recommendedStock,
-      projectedStockoutDate: `${product.expectedStockoutDays} Days (${product.stockStatus})`,
-      reorderRecommendation: `Generate PO for ${recommendedStock} units immediately from ${product.supplier}.`,
+      projectedStockoutDate: `${product.expectedStockoutDays || 12} Days (${product.stockStatus || 'In Stock'})`,
+      reorderRecommendation: `Generate PO for ${recommendedStock} units immediately from ${product.supplier || 'Primary Supplier'}.`,
       timeSeries,
     };
   }
 }
 
 module.exports = new DemandForecastingService();
+

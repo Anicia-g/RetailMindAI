@@ -1,4 +1,5 @@
-const Customer = require('../models/Customer');
+const customerRepository = require('../repositories/customerRepository');
+const customerSegmentRepository = require('../repositories/customerSegmentRepository');
 const rfmService = require('./rfmService');
 
 class KMeansCustomerSegmentationService {
@@ -6,7 +7,7 @@ class KMeansCustomerSegmentationService {
    * K-Means clustering algorithm on normalized RFM features (k=4 clusters)
    */
   async runSegmentation() {
-    const customers = await Customer.find({ bit_IsActive: true });
+    const customers = await customerRepository.getAll({ bit_IsActive: true });
     if (customers.length === 0) {
       return { clusters: [], segmentedCustomers: [] };
     }
@@ -16,7 +17,7 @@ class KMeansCustomerSegmentationService {
       const rfm = await rfmService.calculateCustomerRFM(c.customerId);
       customerRFMList.push({
         ...rfm,
-        id: c.customerId,
+        id: String(c.customerId),
         name: c.name,
         email: c.email,
         phone: c.phone,
@@ -90,16 +91,29 @@ class KMeansCustomerSegmentationService {
 
     // Update Customer records in database asynchronously
     for (const sc of segmentedCustomers) {
-      await Customer.findOneAndUpdate(
-        { customerId: sc.customerId },
-        {
-          segment: sc.segment,
-          cluster: sc.cluster,
-          recencyDays: sc.rfm.recencyDays,
-          frequency: sc.rfm.frequency,
-          monetary: sc.rfm.monetary,
-        }
-      );
+      await customerRepository.update(sc.customerId, {
+        txt_Customer_Type: sc.segment,
+      });
+
+      // Save / update cluster in tbl_Customer_Segment
+      try {
+        await customerSegmentRepository.create({
+          customerId: sc.customerId,
+          segmentName: sc.segment,
+          description: sc.cluster,
+          recencyScore: sc.rfm.scores?.recency || 3,
+          frequencyScore: sc.rfm.scores?.frequency || 3,
+          monetaryScore: sc.rfm.scores?.monetary || 3,
+          churnProbability: sc.segment === 'At Risk' ? 0.75 : 0.15,
+          lifetimeValue: sc.rfm.monetary,
+          assignedDate: new Date(),
+          modelName: 'KMeans-Clustering',
+          isCurrent: true,
+          isActive: true,
+        });
+      } catch (err) {
+        // Continue if duplicate or logged
+      }
     }
 
     return {
@@ -117,3 +131,4 @@ class KMeansCustomerSegmentationService {
 }
 
 module.exports = new KMeansCustomerSegmentationService();
+

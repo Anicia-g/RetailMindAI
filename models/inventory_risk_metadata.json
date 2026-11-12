@@ -1,0 +1,117 @@
+{
+  "modelName": "inventory-risk-classifier",
+  "modelVersion": "1.0.0",
+  "bestModel": "GradientBoosting",
+  "datasetSize": 600,
+  "classes": [
+    "LOW",
+    "MEDIUM",
+    "HIGH"
+  ],
+  "featureColumns": [
+    "currentStock",
+    "reorderLevel",
+    "dailySalesVelocity",
+    "weeklySalesVelocity",
+    "monthlySalesVelocity",
+    "daysRemaining",
+    "recentDemand30d",
+    "expiryDays",
+    "stockToReorderRatio",
+    "velocityToStockRatio"
+  ],
+  "metrics": {
+    "accuracy": 0.9917,
+    "precision": 0.9945,
+    "recall": 0.9919,
+    "macroF1": 0.9931,
+    "confusionMatrix": [
+      [
+        19,
+        0,
+        0
+      ],
+      [
+        0,
+        40,
+        1
+      ],
+      [
+        0,
+        0,
+        60
+      ]
+    ]
+  },
+  "allModelComparisons": {
+    "RandomForest": {
+      "accuracy": 0.95,
+      "precision": 0.9251,
+      "recall": 0.9512,
+      "macroF1": 0.9322,
+      "confusionMatrix": [
+        [
+          19,
+          0,
+          0
+        ],
+        [
+          5,
+          35,
+          1
+        ],
+        [
+          0,
+          0,
+          60
+        ]
+      ]
+    },
+    "GradientBoosting": {
+      "accuracy": 0.9917,
+      "precision": 0.9945,
+      "recall": 0.9919,
+      "macroF1": 0.9931,
+      "confusionMatrix": [
+        [
+          19,
+          0,
+          0
+        ],
+        [
+          0,
+          40,
+          1
+        ],
+        [
+          0,
+          0,
+          60
+        ]
+      ]
+    },
+    "LogisticRegression": {
+      "accuracy": 0.8083,
+      "precision": 0.7843,
+      "recall": 0.8148,
+      "macroF1": 0.7949,
+      "confusionMatrix": [
+        [
+          17,
+          2,
+          0
+        ],
+        [
+          5,
+          28,
+          8
+        ],
+        [
+          2,
+          6,
+          52
+        ]
+      ]
+    }
+  }
+}

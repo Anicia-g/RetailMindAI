@@ -1,7 +1,7 @@
-const Notification = require('../models/Notification');
-const Product = require('../models/Product');
-const StockRisk = require('../models/StockRisk');
-const AnomalyLog = require('../models/AnomalyLog');
+const notificationRepository = require('../repositories/notificationRepository');
+const productRepository = require('../repositories/productRepository');
+const stockRiskRepository = require('../repositories/stockRiskRepository');
+const db = require('../config/db');
 
 class NotificationService {
   /**
@@ -22,146 +22,163 @@ class NotificationService {
       throw new Error('Notification title and message are required.');
     }
 
-    return await Notification.create({
-      recipient: String(recipient),
-      role: String(role).toUpperCase(),
-      storeId: storeId ? String(storeId) : null,
-      type,
+    let userId = null;
+    if (recipient && recipient !== 'all' && !isNaN(recipient)) {
+      userId = parseInt(recipient, 10);
+    }
+
+    const notif = await notificationRepository.create({
+      userId,
+      type: type || 'SYSTEM_NOTIFICATION',
       title: String(title),
       message: String(message),
-      priority,
+      priorityLevel: priority || 'MEDIUM',
+      priority: priority || 'MEDIUM',
       isRead: false,
-      status: 'UNREAD',
-      actionUrl,
-      metadata,
-      bit_IsActive: true,
-      txt_Created_By: 'system',
-      dte_Created_Date: new Date(),
+      readDate: null,
+      referenceType: metadata?.referenceType || (metadata?.productId ? 'PRODUCT' : null),
+      referenceId: metadata?.productId ? Number(metadata.productId) : (metadata?.referenceId ? Number(metadata.referenceId) : null),
+      sentDate: new Date(),
+      channel: 'In-App',
+      deliveryStatus: 'Delivered',
+      actionUrl: actionUrl || '',
+      storeId: storeId ? Number(storeId) : null,
+      isActive: true,
+      createdBy: 'system',
+      modifiedBy: 'system',
     });
+
+    return notif;
   }
 
   /**
    * Retrieves notifications scoped strictly to the authenticated user and role
    */
   async getUserNotifications(user, query = {}) {
-    const userRole = (user?.role || 'CUSTOMER').toUpperCase();
-    const userId = user?.id || user?._id || user?.customerId;
-    const storeId = user?.storeId || user?.store;
+    const userId = user?.userId || user?.id || user?._id || user?.customerId;
+    const numericUserId = userId && !isNaN(userId) ? parseInt(userId, 10) : null;
+    const storeId = user?.storeId ? parseInt(user.storeId, 10) : null;
     const limit = parseInt(query.limit || '30', 10);
 
-    const orClauses = [
-      { recipient: 'all' },
-      { recipient: String(userId) },
-      { role: 'ALL' },
-      { role: userRole },
-    ];
+    const conditions = ['n.bit_IsActive = 1'];
+    const params = [];
 
-    if (userRole === 'SELLER' && storeId) {
-      orClauses.push({ storeId: String(storeId) });
+    // Filter by recipient: either global (NULL) or matching current user
+    if (numericUserId) {
+      if (storeId) {
+        conditions.push('(n.int_User_Id IS NULL OR n.int_User_Id = ? OR n.int_Store_Id = ?)');
+        params.push(numericUserId, storeId);
+      } else {
+        conditions.push('(n.int_User_Id IS NULL OR n.int_User_Id = ?)');
+        params.push(numericUserId);
+      }
+    } else if (storeId) {
+      conditions.push('(n.int_User_Id IS NULL OR n.int_Store_Id = ?)');
+      params.push(storeId);
     }
 
-    const matchQuery = {
-      bit_IsActive: true,
-      $or: orClauses,
-    };
-
-    if (query.unreadOnly === 'true') {
-      matchQuery.isRead = false;
+    if (query.unreadOnly === 'true' || query.unreadOnly === true) {
+      conditions.push('n.bit_Is_Read = 0');
     }
     if (query.type) {
-      matchQuery.type = query.type;
+      conditions.push('n.txt_Notification_Type = ?');
+      params.push(query.type);
     }
 
-    return await Notification.find(matchQuery)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    params.push(limit);
+
+    const sql = `
+      SELECT n.*
+      FROM tbl_Notification n
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY n.dte_Created_Date DESC
+      LIMIT ?
+    `;
+
+    const rows = await db.query(sql, params);
+    return rows.map((r) => notificationRepository.toDTO(r));
   }
 
   /**
    * Gets unread notification count for a user
    */
   async getUnreadCount(user) {
-    const userRole = (user?.role || 'CUSTOMER').toUpperCase();
-    const userId = user?.id || user?._id || user?.customerId;
-    const storeId = user?.storeId || user?.store;
+    const userId = user?.userId || user?.id || user?._id || user?.customerId;
+    const numericUserId = userId && !isNaN(userId) ? parseInt(userId, 10) : null;
+    const storeId = user?.storeId ? parseInt(user.storeId, 10) : null;
 
-    const orClauses = [
-      { recipient: 'all' },
-      { recipient: String(userId) },
-      { role: 'ALL' },
-      { role: userRole },
-    ];
+    const conditions = ['bit_IsActive = 1', 'bit_Is_Read = 0'];
+    const params = [];
 
-    if (userRole === 'SELLER' && storeId) {
-      orClauses.push({ storeId: String(storeId) });
+    if (numericUserId) {
+      if (storeId) {
+        conditions.push('(int_User_Id IS NULL OR int_User_Id = ? OR int_Store_Id = ?)');
+        params.push(numericUserId, storeId);
+      } else {
+        conditions.push('(int_User_Id IS NULL OR int_User_Id = ?)');
+        params.push(numericUserId);
+      }
+    } else if (storeId) {
+      conditions.push('(int_User_Id IS NULL OR int_Store_Id = ?)');
+      params.push(storeId);
     }
 
-    return await Notification.countDocuments({
-      bit_IsActive: true,
-      isRead: false,
-      $or: orClauses,
-    });
+    const sql = `
+      SELECT COUNT(*) AS unreadCount
+      FROM tbl_Notification
+      WHERE ${conditions.join(' AND ')}
+    `;
+
+    const rows = await db.query(sql, params);
+    return Number(rows[0]?.unreadCount || 0);
   }
 
   /**
    * Marks a single notification as read
    */
   async markAsRead(id, user) {
-    const doc = await Notification.findById(id);
-    if (!doc) {
+    const notifId = parseInt(id, 10);
+    const existing = await notificationRepository.findById(notifId);
+    if (!existing) {
       throw new Error(`Notification ${id} not found`);
     }
 
-    doc.isRead = true;
-    doc.readAt = new Date();
-    doc.status = 'READ';
-    doc.txt_Modified_By = user?.email || 'system';
-    doc.dte_Modified_Date = new Date();
-    await doc.save();
+    await notificationRepository.update(notifId, {
+      isRead: true,
+      readDate: new Date(),
+      modifiedBy: user?.email || 'system',
+    });
 
-    return doc;
+    const updated = await notificationRepository.findById(notifId);
+    return notificationRepository.toDTO(updated);
   }
 
   /**
    * Marks all user notifications as read
    */
   async markAllAsRead(user) {
-    const userRole = (user?.role || 'CUSTOMER').toUpperCase();
-    const userId = user?.id || user?._id || user?.customerId;
-    const storeId = user?.storeId || user?.store;
+    const userId = user?.userId || user?.id || user?._id || user?.customerId;
+    const numericUserId = userId && !isNaN(userId) ? parseInt(userId, 10) : null;
 
-    const orClauses = [
-      { recipient: 'all' },
-      { recipient: String(userId) },
-      { role: 'ALL' },
-      { role: userRole },
-    ];
+    let sql = `
+      UPDATE tbl_Notification
+      SET bit_Is_Read = 1,
+          dte_Read_Date = NOW(),
+          txt_Modified_By = ?,
+          dte_Modified_Date = NOW()
+      WHERE bit_IsActive = 1 AND bit_Is_Read = 0
+    `;
+    const params = [user?.email || 'system'];
 
-    if (userRole === 'SELLER' && storeId) {
-      orClauses.push({ storeId: String(storeId) });
+    if (numericUserId) {
+      sql += ' AND (int_User_Id IS NULL OR int_User_Id = ?)';
+      params.push(numericUserId);
     }
 
-    const result = await Notification.updateMany(
-      {
-        bit_IsActive: true,
-        isRead: false,
-        $or: orClauses,
-      },
-      {
-        $set: {
-          isRead: true,
-          readAt: new Date(),
-          status: 'READ',
-          txt_Modified_By: user?.email || 'system',
-          dte_Modified_Date: new Date(),
-        },
-      }
-    );
-
+    const result = await db.query(sql, params);
     return {
       success: true,
-      modifiedCount: result.modifiedCount,
+      modifiedCount: result.affectedRows || 0,
     };
   }
 
@@ -172,23 +189,32 @@ class NotificationService {
     const alertsCreated = [];
 
     // 1. Scan low-stock products
-    const lowStockProducts = await Product.find({
-      bit_IsActive: true,
-      $expr: { $lte: ['$stock', '$reorderLevel'] },
-    }).limit(5).lean();
+    const lowStockSql = `
+      SELECT p.int_Product_Id AS productId, p.txt_Product_Name AS name, 
+             COALESCE(i.int_Quantity_Available, 0) AS stock, p.int_Reorder_Level AS reorderLevel
+      FROM tbl_Product p
+      LEFT JOIN tbl_Inventory i ON p.int_Product_Id = i.int_Product_Id
+      WHERE p.bit_IsActive = 1 AND COALESCE(i.int_Quantity_Available, 0) <= p.int_Reorder_Level
+      LIMIT 5
+    `;
+    const lowStockProducts = await db.query(lowStockSql);
 
     for (const p of lowStockProducts) {
-      const existing = await Notification.findOne({
-        type: 'LOW_STOCK',
-        'metadata.productId': p.productId,
-        isRead: false,
-      });
+      const existingSql = `
+        SELECT int_Notification_Id
+        FROM tbl_Notification
+        WHERE txt_Notification_Type = 'LOW_STOCK'
+          AND int_Reference_Id = ?
+          AND bit_Is_Read = 0
+          AND bit_IsActive = 1
+        LIMIT 1
+      `;
+      const existing = await db.query(existingSql, [p.productId]);
 
-      if (!existing) {
+      if (existing.length === 0) {
         const notif = await this.createNotification({
           recipient: 'all',
           role: 'ADMIN',
-          storeId: p.storeId,
           type: 'LOW_STOCK',
           title: `Low Stock Alert: ${p.name}`,
           message: `Current stock (${p.stock} units) has breached the reorder threshold of ${p.reorderLevel} units.`,
@@ -200,27 +226,39 @@ class NotificationService {
       }
     }
 
-    // 2. Scan high-risk inventory items from ML service
-    const highRiskItems = await StockRisk.find({
-      bit_IsActive: true,
-      riskLevel: 'HIGH',
-    }).limit(3).lean();
+    // 2. Scan high-risk inventory items from ML table
+    const highRiskSql = `
+      SELECT sr.int_Stock_Risk_Id AS stockRiskId, sr.int_Product_Id AS productId,
+             sr.txt_Risk_Level AS riskLevel, sr.dec_Risk_Score AS riskScore,
+             sr.int_Days_Until_Stockout AS daysRemaining, sr.int_Store_Id AS storeId,
+             p.txt_Product_Name AS productName
+      FROM tbl_Stock_Risk sr
+      LEFT JOIN tbl_Product p ON sr.int_Product_Id = p.int_Product_Id
+      WHERE sr.bit_IsActive = 1 AND sr.txt_Risk_Level = 'HIGH'
+      LIMIT 3
+    `;
+    const highRiskItems = await db.query(highRiskSql);
 
     for (const r of highRiskItems) {
-      const existing = await Notification.findOne({
-        type: 'HIGH_STOCK_RISK',
-        'metadata.productId': r.productId,
-        isRead: false,
-      });
+      const existingSql = `
+        SELECT int_Notification_Id
+        FROM tbl_Notification
+        WHERE txt_Notification_Type = 'HIGH_STOCK_RISK'
+          AND int_Reference_Id = ?
+          AND bit_Is_Read = 0
+          AND bit_IsActive = 1
+        LIMIT 1
+      `;
+      const existing = await db.query(existingSql, [r.productId]);
 
-      if (!existing) {
+      if (existing.length === 0) {
         const notif = await this.createNotification({
           recipient: 'all',
           role: 'ADMIN',
           storeId: r.storeId,
           type: 'HIGH_STOCK_RISK',
-          title: `High Stockout Risk: ${r.productName || r.productId}`,
-          message: `Stock-out probability is ${Math.round((r.stockOutProbability || 0.88) * 100)}% with ~${r.daysRemaining || 2} days runway remaining.`,
+          title: `High Stockout Risk: ${r.productName || `Product #${r.productId}`}`,
+          message: `Stock-out risk score is ${Math.round((Number(r.riskScore) || 0.88) * 100)}% with ~${r.daysRemaining || 2} days runway remaining.`,
           priority: 'CRITICAL',
           actionUrl: '/purchase-orders',
           metadata: { productId: r.productId, riskLevel: r.riskLevel },

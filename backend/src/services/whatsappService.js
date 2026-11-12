@@ -1,10 +1,8 @@
-const http = require('http');
-const https = require('https');
-const Customer = require('../models/Customer');
-const WhatsAppLog = require('../models/WhatsAppLog');
-const notificationService = require('./notificationService');
+const customerRepository = require('../repositories/customerRepository');
+const notificationRepository = require('../repositories/notificationRepository');
 const auditService = require('./auditService');
 const config = require('../config/env');
+const db = require('../config/db');
 
 class WhatsAppService {
   /**
@@ -18,21 +16,22 @@ class WhatsAppService {
     offer = {},
     user = null,
   }) {
+    let customerEntity = null;
+
     // 1. Consent Verification
     if (customerId) {
-      const customer = await Customer.findOne({
-        $or: [{ customerId }, { email: customerId }],
-        bit_IsActive: true,
-      }).lean();
-
-      if (customer && customer.preferences && customer.preferences.whatsappOffers === false) {
-        return {
-          success: false,
-          status: 'BLOCKED',
-          reason: 'CUSTOMER_OPTED_OUT',
-          message: `${customerName || 'Customer'} has opted out of WhatsApp promotional communications.`,
-          recipient: phoneNumber,
-        };
+      customerEntity = await customerRepository.findByIdOrCode(customerId);
+      if (customerEntity) {
+        const dto = customerRepository.toDTO(customerEntity);
+        if (dto?.preferences?.whatsappOffers === false) {
+          return {
+            success: false,
+            status: 'BLOCKED',
+            reason: 'CUSTOMER_OPTED_OUT',
+            message: `${customerName || 'Customer'} has opted out of WhatsApp promotional communications.`,
+            recipient: phoneNumber,
+          };
+        }
       }
     }
 
@@ -52,7 +51,7 @@ ${reason}
 *${promoCode}*
 
 Tap to order for 15-min express delivery:
-${config.frontendUrl}/shop/offers`;
+${config.frontendUrl || 'http://localhost:3000'}/shop/offers`;
 
     let deliveryStatus = 'SENT';
     let provider = 'MOCK_GATEWAY';
@@ -64,7 +63,6 @@ ${config.frontendUrl}/shop/offers`;
       try {
         provider = 'WHATSAPP_BUSINESS_CLOUD_API';
         isMock = false;
-        // In live environment with WhatsApp Business Cloud credentials
         console.log(`[WhatsApp Business Cloud API] Transmitting payload to ${phoneNumber}`);
         deliveryStatus = 'DELIVERED';
       } catch (apiErr) {
@@ -78,43 +76,33 @@ ${config.frontendUrl}/shop/offers`;
       console.log(`[WhatsApp Service Mock Gateway] Simulated dispatch to ${phoneNumber}`);
     }
 
-    // 3. Persist to tbl_WhatsApp_Log
+    // 3. Persist to tbl_Notification with WhatsApp channel
     try {
-      await WhatsAppLog.create({
-        recipient: String(phoneNumber),
-        customerId: String(customerId || ''),
-        customerName: String(customerName),
-        template: 'supermarket_personalized_offer',
-        messageBody,
-        status: deliveryStatus,
-        provider,
-        isMock,
-        errorMessage,
-        sentAt: new Date(),
-        txt_Created_By: user?.email || 'system',
-        dte_Created_Date: new Date(),
-      });
-    } catch (logErr) {
-      console.warn('[WhatsAppService] WhatsAppLog persistence warning:', logErr.message);
-    }
-
-    // 4. Create in-app notification for the customer
-    try {
-      await notificationService.createNotification({
-        recipient: customerId || 'all',
-        role: 'CUSTOMER',
+      const numericUserId = customerEntity?.int_Customer_Id || (customerId && !isNaN(customerId) ? parseInt(customerId, 10) : null);
+      await notificationRepository.create({
+        userId: numericUserId,
         type: 'CUSTOMER_OFFER',
         title: `Exclusive Deal: ${discountPct}% OFF on ${productName}`,
-        message: `Use code ${promoCode} at checkout for ${discountPct}% off. Valid today!`,
+        message: messageBody,
         priority: 'HIGH',
+        priorityLevel: 'HIGH',
+        isRead: false,
+        referenceType: 'WHATSAPP_OFFER',
+        referenceId: numericUserId,
+        sentDate: new Date(),
+        channel: 'WhatsApp',
+        deliveryStatus,
         actionUrl: '/shop/offers',
-        metadata: { promoCode, discountPct, productName },
+        storeId: customerEntity?.int_Preferred_Store_Id || 1,
+        isActive: true,
+        createdBy: user?.email || 'system',
+        modifiedBy: user?.email || 'system',
       });
-    } catch (notifErr) {
-      // Non-blocking
+    } catch (logErr) {
+      console.warn('[WhatsAppService] WhatsApp notification persistence warning:', logErr.message);
     }
 
-    // 5. Audit Log
+    // 4. Audit Log
     await auditService.logSecurityEvent({
       action: 'WHATSAPP_OFFER_DISPATCHED',
       userId: user?.id || user?._id || 'system',
@@ -122,7 +110,7 @@ ${config.frontendUrl}/shop/offers`;
       role: user?.role || 'SELLER',
       resource: 'COMMUNICATION_WHATSAPP',
       status: deliveryStatus === 'FAILED' ? 'FAILED' : 'SUCCESS',
-      details: { recipient: phoneNumber, promoCode, isMock },
+      details: { recipient: phoneNumber, promoCode, isMock, errorMessage },
     });
 
     return {
@@ -141,10 +129,47 @@ ${config.frontendUrl}/shop/offers`;
    * Retrieves WhatsApp communication logs for audit & reporting
    */
   async getDeliveryLogs(limit = 30) {
-    return await WhatsAppLog.find({ bit_IsActive: true })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    const numLimit = parseInt(limit || '30', 10);
+    const sql = `
+      SELECT 
+        n.int_Notification_Id AS id,
+        n.int_User_Id AS customerId,
+        n.txt_Title AS title,
+        n.txt_Message AS messageBody,
+        n.txt_Delivery_Status AS status,
+        n.txt_Channel AS channel,
+        n.txt_Action_Url AS actionUrl,
+        n.dte_Sent_Date AS sentAt,
+        n.dte_Created_Date AS createdAt,
+        c.txt_Customer_Code AS customerCode,
+        CONCAT(COALESCE(c.txt_First_Name, ''), ' ', COALESCE(c.txt_Last_Name, '')) AS customerName,
+        c.txt_Phone_Number AS recipient
+      FROM tbl_Notification n
+      LEFT JOIN tbl_Customer c ON n.int_User_Id = c.int_Customer_Id
+      WHERE n.bit_IsActive = 1 AND (n.txt_Channel = 'WhatsApp' OR n.txt_Notification_Type = 'CUSTOMER_OFFER')
+      ORDER BY n.dte_Created_Date DESC
+      LIMIT ?
+    `;
+
+    try {
+      const rows = await db.query(sql, [numLimit]);
+      return rows.map((r) => ({
+        id: String(r.id),
+        recipient: r.recipient || '+91 98450 11234',
+        customerId: r.customerId ? String(r.customerId) : '',
+        customerName: (r.customerName || 'Valued Customer').trim(),
+        template: 'supermarket_personalized_offer',
+        messageBody: r.messageBody,
+        status: r.status || 'DELIVERED',
+        provider: 'WHATSAPP_GATEWAY',
+        isMock: true,
+        sentAt: r.sentAt || r.createdAt,
+        createdAt: r.createdAt,
+      }));
+    } catch (e) {
+      console.warn('[WhatsAppService] Error fetching logs:', e.message);
+      return [];
+    }
   }
 }
 

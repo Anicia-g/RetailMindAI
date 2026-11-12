@@ -1,0 +1,19 @@
+{
+  "modelName": "retail-transaction-anomaly-detector",
+  "modelVersion": "1.0.0",
+  "algorithm": "Isolation Forest",
+  "contamination": 0.04,
+  "nEstimators": 120,
+  "features": [
+    "totalAmount",
+    "itemCount",
+    "avgItemPrice",
+    "hourOfDay",
+    "discountPct"
+  ],
+  "datasetSize": 1200,
+  "detectedAnomalyCount": 48,
+  "minDecisionScore": -0.2053,
+  "maxDecisionScore": 0.2074,
+  "threshold": 0.0
+}

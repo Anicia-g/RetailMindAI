@@ -71,9 +71,15 @@ class SellerController {
 
   async getBestCustomer(req, res, next) {
     try {
-      const storeId = req.user?.storeId || 'store-01';
-      const bestCustomer = await customerService.getBestCustomerAnalytics(storeId);
-      return successResponse(res, bestCustomer, 'Best customer calculated from transaction history');
+      const bestCustomer = await sellerService.getSellerBestCustomer(req.user);
+      return successResponse(
+        res,
+        {
+          topCustomer: bestCustomer,
+          ...(bestCustomer || {}),
+        },
+        'Best customer calculated from transaction history'
+      );
     } catch (err) {
       next(err);
     }

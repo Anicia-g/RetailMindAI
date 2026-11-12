@@ -1,69 +1,82 @@
-const AuditLog = require('../models/AuditLog');
-const LoginLog = require('../models/LoginLog');
+const auditLogRepository = require('../repositories/auditLogRepository');
+const loginLogRepository = require('../repositories/loginLogRepository');
 
 class AuditService {
   /**
-   * Records a user authentication event in tbl_Login_Log
+   * Logs a user login event (Success or Failed)
    */
-  async logLogin({ userId = '', email = '', role = 'CUSTOMER', status = 'SUCCESS', ipAddress = '', userAgent = '', reason = '' }) {
+  async logLogin({ userId, email, role, status = 'SUCCESS', reason = '', ipAddress = '', userAgent = '' }) {
     try {
-      await LoginLog.create({
-        userId: String(userId || ''),
-        email: String(email || '').toLowerCase(),
-        role: String(role || 'CUSTOMER').toUpperCase(),
-        status: status === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
-        reason: String(reason || ''),
-        ipAddress: String(ipAddress || ''),
-        userAgent: String(userAgent || ''),
-        loginAt: new Date(),
-        txt_Created_By: String(userId || email || 'system'),
-        dte_Created_Date: new Date(),
+      await loginLogRepository.logLogin({
+        userId: userId ? (parseInt(userId, 10) || null) : null,
+        ipAddress: ipAddress || '127.0.0.1',
+        browserInfo: userAgent || 'Browser',
+        loginStatus: status,
+        failureReason: reason || null,
+        user: email || 'system',
       });
-    } catch (err) {
-      console.warn('[AuditService] Login log write notice:', err.message);
+    } catch (error) {
+      console.warn('[AuditService] logLogin warning:', error.message);
     }
   }
 
   /**
-   * Records a security-sensitive business or authorization event in tbl_Audit_Log
+   * Logs a security or domain event
    */
   async logSecurityEvent({
     action,
-    userId = 'system',
+    userId = null,
     email = '',
-    role = 'SYSTEM',
-    resource = '',
+    role = '',
+    resource = 'AUTH',
     status = 'SUCCESS',
     ipAddress = '',
     userAgent = '',
-    details = {},
+    details = null,
   }) {
     try {
-      // Sanitize details: strip any password, secret, token, or OTP fields
-      const sanitizedDetails = { ...details };
-      delete sanitizedDetails.password;
-      delete sanitizedDetails.passwordHash;
-      delete sanitizedDetails.otp;
-      delete sanitizedDetails.rawOtp;
-      delete sanitizedDetails.token;
-      delete sanitizedDetails.jwt;
-      delete sanitizedDetails.secret;
-
-      await AuditLog.create({
-        action,
-        userId: String(userId || 'system'),
-        email: String(email || ''),
-        role: String(role || 'SYSTEM'),
-        resource: String(resource || ''),
-        status,
-        ipAddress: String(ipAddress || ''),
-        userAgent: String(userAgent || ''),
-        details: sanitizedDetails,
-        txt_Created_By: String(userId || email || 'system'),
-        dte_Created_Date: new Date(),
+      await auditLogRepository.logEvent({
+        userId: userId ? (parseInt(userId, 10) || null) : null,
+        tableName: resource,
+        recordId: userId ? String(userId) : null,
+        actionType: action,
+        newValue: details,
+        ipAddress: ipAddress || '127.0.0.1',
+        moduleName: 'SECURITY',
+        severityLevel: status === 'FAILED' ? 'HIGH' : 'INFO',
+        user: email || 'system',
       });
-    } catch (err) {
-      console.warn('[AuditService] Audit log write notice:', err.message);
+    } catch (error) {
+      console.warn('[AuditService] logSecurityEvent warning:', error.message);
+    }
+  }
+
+  /**
+   * General purpose change audit logger
+   */
+  async logChange({
+    tableName,
+    recordId,
+    action,
+    oldValue = null,
+    newValue = null,
+    user = 'system',
+    reason = '',
+    ipAddress = '127.0.0.1',
+  }) {
+    try {
+      await auditLogRepository.logEvent({
+        tableName,
+        recordId: String(recordId),
+        actionType: action,
+        oldValue,
+        newValue,
+        changeReason: reason,
+        ipAddress,
+        user,
+      });
+    } catch (error) {
+      console.warn('[AuditService] logChange warning:', error.message);
     }
   }
 }

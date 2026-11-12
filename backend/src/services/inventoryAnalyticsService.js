@@ -1,6 +1,6 @@
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const Order = require('../models/Order');
+const db = require('../config/db');
+const productRepository = require('../repositories/productRepository');
+const inventoryRepository = require('../repositories/inventoryRepository');
 const { evaluateInventoryHealth, calculateDaysRemaining, calculateVelocities } = require('../utils/inventoryHealth');
 const { parseDateRange } = require('../utils/dateUtils');
 
@@ -10,18 +10,7 @@ class InventoryAnalyticsService {
    * Real-time stock status, health distributions, and capital exposure
    */
   async getInventorySummary(storeId = null) {
-    const productMatch = { bit_IsActive: true };
-    const inventoryMatch = { bit_IsActive: true };
-
-    if (storeId && storeId !== 'All' && storeId !== 'all') {
-      productMatch.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
-      inventoryMatch.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
-    }
-
-    const [products, inventoryDocs] = await Promise.all([
-      Product.find(productMatch),
-      Inventory.find(inventoryMatch),
-    ]);
+    const products = await productRepository.getAll({ bit_IsActive: true });
 
     let totalInventoryUnits = 0;
     let totalInventoryValue = 0;
@@ -59,8 +48,8 @@ class InventoryAnalyticsService {
       }
 
       return {
-        id: p.productId,
-        productId: p.productId,
+        id: String(p.productId),
+        productId: String(p.productId),
         name: p.name,
         sku: p.sku,
         category: p.category,
@@ -114,35 +103,34 @@ class InventoryAnalyticsService {
    */
   async getStockVelocity(productId, storeId = null, days = 30) {
     const { startDate, endDate } = parseDateRange(`${days}d`);
-    const match = {
-      bit_IsActive: true,
-      status: { $in: ['Completed', 'Delivered'] },
-      'items.productId': productId,
-      createdAt: { $gte: startDate, $lte: endDate },
-    };
 
+    let conditions = "o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED') AND oi.int_Product_Id = ? AND oi.bit_IsActive = 1";
+    const params = [productId];
+
+    if (startDate && endDate) {
+      conditions += " AND o.dte_Created_Date >= ? AND o.dte_Created_Date <= ?";
+      params.push(startDate, endDate);
+    }
     if (storeId && storeId !== 'All') {
-      match.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
+      conditions += " AND o.int_Store_Id = ?";
+      params.push(storeId);
     }
 
-    const [agg] = await Order.aggregate([
-      { $match: match },
-      { $unwind: '$items' },
-      { $match: { 'items.productId': productId } },
-      {
-        $group: {
-          _id: null,
-          totalUnitsSold: { $sum: '$items.qty' },
-          orderCount: { $sum: 1 },
-        },
-      },
-    ]);
+    const sql = `
+      SELECT 
+        COALESCE(SUM(oi.int_Quantity), 0) AS totalUnitsSold,
+        COUNT(DISTINCT o.int_Order_Id) AS orderCount
+      FROM tbl_Order_Item oi
+      JOIN tbl_Order o ON oi.int_Order_Id = o.int_Order_Id
+      WHERE ${conditions}
+    `;
 
-    const totalUnitsSold = agg?.totalUnitsSold || 0;
+    const [agg] = await db.query(sql, params);
+    const totalUnitsSold = Number(agg?.totalUnitsSold) || 0;
     const velocities = calculateVelocities(totalUnitsSold, days);
 
     return {
-      productId,
+      productId: String(productId),
       storeId: storeId || 'All',
       daysChecked: days,
       totalUnitsSold,
@@ -155,46 +143,46 @@ class InventoryAnalyticsService {
    * Clean feature matrix for future ML inventory risk models
    */
   async getInventoryRiskFeatures(storeId = null) {
-    const query = { bit_IsActive: true };
-    if (storeId && storeId !== 'All') {
-      query.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
-    }
-
-    const products = await Product.find(query);
+    const products = await productRepository.getAll({ bit_IsActive: true });
 
     // Compute 30-day demand per product
     const { startDate, endDate } = parseDateRange('30d');
-    const demandAgg = await Order.aggregate([
-      {
-        $match: {
-          bit_IsActive: true,
-          status: { $in: ['Completed', 'Delivered'] },
-          createdAt: { $gte: startDate, $lte: endDate },
-        },
-      },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.productId',
-          unitsSold30d: { $sum: '$items.qty' },
-        },
-      },
-    ]);
+    const params = [];
+    let dateFilter = '';
+    if (startDate && endDate) {
+      dateFilter = ' AND o.dte_Created_Date >= ? AND o.dte_Created_Date <= ?';
+      params.push(startDate, endDate);
+    }
 
+    const demandSql = `
+      SELECT 
+        oi.int_Product_Id AS productId,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold30d
+      FROM tbl_Order_Item oi
+      JOIN tbl_Order o ON oi.int_Order_Id = o.int_Order_Id
+      WHERE o.bit_IsActive = 1 
+        AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')
+        AND oi.bit_IsActive = 1
+        ${dateFilter}
+      GROUP BY oi.int_Product_Id
+    `;
+
+    const demandAgg = await db.query(demandSql, params);
     const demandMap = new Map();
-    demandAgg.forEach((d) => demandMap.set(d._id, d.unitsSold30d));
+    demandAgg.forEach((d) => demandMap.set(String(d.productId), Number(d.unitsSold30d) || 0));
 
     return products.map((p) => {
-      const units30d = demandMap.get(p.productId) || (p.unitsSold || 0);
+      const pIdStr = String(p.productId);
+      const units30d = demandMap.get(pIdStr) || (p.unitsSold || 0);
       const velocities = calculateVelocities(units30d, 30);
       const daysRemaining = calculateDaysRemaining(p.stock, velocities.dailyVelocity || p.dailyVelocity || 1);
 
       return {
-        productId: p.productId,
+        productId: pIdStr,
         productName: p.name,
         sku: p.sku,
         category: p.category,
-        storeId: p.storeId || storeId || 'store-01',
+        storeId: String(p.storeId || storeId || '1'),
         currentStock: p.stock,
         reorderLevel: p.reorderLevel,
         dailySalesVelocity: velocities.dailyVelocity,
@@ -214,12 +202,7 @@ class InventoryAnalyticsService {
    * Clean feature matrix for future ID3 / C4.5 Decision Tree models
    */
   async getDiscountFeatures(storeId = null) {
-    const query = { bit_IsActive: true };
-    if (storeId && storeId !== 'All') {
-      query.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
-    }
-
-    const products = await Product.find(query);
+    const products = await productRepository.getAll({ bit_IsActive: true });
 
     return products.map((p) => {
       const cost = Number(p.costPrice) || (p.price * 0.7);
@@ -228,11 +211,11 @@ class InventoryAnalyticsService {
       const daysToExpiry = p.expiryDays !== undefined && p.expiryDays !== null ? Number(p.expiryDays) : 45;
 
       return {
-        productId: p.productId,
+        productId: String(p.productId),
         productName: p.name,
         sku: p.sku,
         category: p.category,
-        storeId: p.storeId || storeId || 'store-01',
+        storeId: String(p.storeId || storeId || '1'),
         currentStock: p.stock,
         reorderLevel: p.reorderLevel,
         salesVelocity: velocity,
@@ -250,3 +233,4 @@ class InventoryAnalyticsService {
 }
 
 module.exports = new InventoryAnalyticsService();
+

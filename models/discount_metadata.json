@@ -1,0 +1,1046 @@
+{
+  "modelName": "smart-discount-decision-trees",
+  "modelVersion": "1.0.0",
+  "features": [
+    "margin_tier",
+    "stock_level",
+    "velocity_tier",
+    "expiry_urgency",
+    "season"
+  ],
+  "classes": [
+    0,
+    5,
+    10,
+    15,
+    20
+  ],
+  "id3Metrics": {
+    "algorithm": "ID3 (Shannon Entropy + Information Gain)",
+    "accuracy": 0.9714,
+    "precision": 0.9795,
+    "recall": 0.9892,
+    "macroF1": 0.9836,
+    "rootAttribute": "expiry_urgency"
+  },
+  "c45Metrics": {
+    "algorithm": "C4.5 (Gain Ratio + Split Information)",
+    "accuracy": 0.9714,
+    "precision": 0.9795,
+    "recall": 0.9892,
+    "macroF1": 0.9836,
+    "rootAttribute": "expiry_urgency"
+  },
+  "id3TreeStructure": {
+    "is_leaf": false,
+    "split_attribute": "expiry_urgency",
+    "sample_count": 560,
+    "entropy": 1.7654,
+    "gain": 0.7829,
+    "gain_ratio": 0.0,
+    "depth": 0,
+    "branches": {
+      "NEAR": {
+        "is_leaf": false,
+        "split_attribute": "stock_level",
+        "sample_count": 166,
+        "entropy": 1.3843,
+        "gain": 1.1133,
+        "gain_ratio": 0.0,
+        "depth": 1,
+        "branches": {
+          "CRITICAL": {
+            "is_leaf": false,
+            "split_attribute": "velocity_tier",
+            "sample_count": 29,
+            "entropy": 0.2164,
+            "gain": 0.0819,
+            "gain_ratio": 0.0,
+            "depth": 2,
+            "branches": {
+              "FAST": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 7,
+                "class_distribution": {
+                  "0": 7
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MODERATE": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 16,
+                "class_distribution": {
+                  "0": 16
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "SLOW": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 6,
+                "entropy": 0.65,
+                "gain": 0.65,
+                "gain_ratio": 0.0,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 5,
+                    "class_distribution": {
+                      "0": 5
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              }
+            }
+          },
+          "NORMAL": {
+            "is_leaf": true,
+            "prediction": 10,
+            "sample_count": 85,
+            "class_distribution": {
+              "10": 85
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "OVERSTOCK": {
+            "is_leaf": false,
+            "split_attribute": "margin_tier",
+            "sample_count": 52,
+            "entropy": 0.7444,
+            "gain": 0.7444,
+            "gain_ratio": 0.0,
+            "depth": 2,
+            "branches": {
+              "HIGH": {
+                "is_leaf": true,
+                "prediction": 15,
+                "sample_count": 17,
+                "class_distribution": {
+                  "15": 17
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "LOW": {
+                "is_leaf": true,
+                "prediction": 10,
+                "sample_count": 11,
+                "class_distribution": {
+                  "10": 11
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MEDIUM": {
+                "is_leaf": true,
+                "prediction": 15,
+                "sample_count": 24,
+                "class_distribution": {
+                  "15": 24
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          }
+        }
+      },
+      "SAFE": {
+        "is_leaf": false,
+        "split_attribute": "velocity_tier",
+        "sample_count": 305,
+        "entropy": 0.8021,
+        "gain": 0.2854,
+        "gain_ratio": 0.0,
+        "depth": 1,
+        "branches": {
+          "FAST": {
+            "is_leaf": true,
+            "prediction": 0,
+            "sample_count": 64,
+            "class_distribution": {
+              "0": 64
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "MODERATE": {
+            "is_leaf": false,
+            "split_attribute": "season",
+            "sample_count": 148,
+            "entropy": 0.4516,
+            "gain": 0.2496,
+            "gain_ratio": 0.0,
+            "depth": 2,
+            "branches": {
+              "FESTIVE": {
+                "is_leaf": false,
+                "split_attribute": "stock_level",
+                "sample_count": 30,
+                "entropy": 0.9968,
+                "gain": 0.9968,
+                "gain_ratio": 0.0,
+                "depth": 3,
+                "branches": {
+                  "CRITICAL": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 8,
+                    "class_distribution": {
+                      "0": 8
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "NORMAL": {
+                    "is_leaf": true,
+                    "prediction": 5,
+                    "sample_count": 14,
+                    "class_distribution": {
+                      "5": 14
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "OVERSTOCK": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 8,
+                    "class_distribution": {
+                      "0": 8
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "MONSOON": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 52,
+                "class_distribution": {
+                  "0": 52
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "SUMMER": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 36,
+                "class_distribution": {
+                  "0": 36
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "WINTER": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 30,
+                "class_distribution": {
+                  "0": 30
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          },
+          "SLOW": {
+            "is_leaf": false,
+            "split_attribute": "stock_level",
+            "sample_count": 93,
+            "entropy": 0.9758,
+            "gain": 0.6723,
+            "gain_ratio": 0.0,
+            "depth": 2,
+            "branches": {
+              "CRITICAL": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 17,
+                "entropy": 0.5226,
+                "gain": 0.2873,
+                "gain_ratio": 0.0,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": false,
+                    "split_attribute": "season",
+                    "sample_count": 4,
+                    "entropy": 1.0,
+                    "gain": 1.0,
+                    "gain_ratio": 0.0,
+                    "depth": 4,
+                    "branches": {
+                      "FESTIVE": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "SUMMER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "0": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      }
+                    }
+                  },
+                  "LOW": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 6,
+                    "class_distribution": {
+                      "0": 6
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 7,
+                    "class_distribution": {
+                      "0": 7
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "NORMAL": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 44,
+                "entropy": 0.4395,
+                "gain": 0.1764,
+                "gain_ratio": 0.0,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": false,
+                    "split_attribute": "season",
+                    "sample_count": 13,
+                    "entropy": 0.8905,
+                    "gain": 0.8905,
+                    "gain_ratio": 0.0,
+                    "depth": 4,
+                    "branches": {
+                      "FESTIVE": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "MONSOON": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "SUMMER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 4,
+                        "class_distribution": {
+                          "0": 4
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "WINTER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 5,
+                        "class_distribution": {
+                          "0": 5
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      }
+                    }
+                  },
+                  "LOW": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 11,
+                    "class_distribution": {
+                      "0": 11
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 20,
+                    "class_distribution": {
+                      "0": 20
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "OVERSTOCK": {
+                "is_leaf": true,
+                "prediction": 10,
+                "sample_count": 32,
+                "class_distribution": {
+                  "10": 32
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          }
+        }
+      },
+      "URGENT": {
+        "is_leaf": false,
+        "split_attribute": "stock_level",
+        "sample_count": 89,
+        "entropy": 0.8517,
+        "gain": 0.7481,
+        "gain_ratio": 0.0,
+        "depth": 1,
+        "branches": {
+          "CRITICAL": {
+            "is_leaf": false,
+            "split_attribute": "margin_tier",
+            "sample_count": 19,
+            "entropy": 0.4855,
+            "gain": 0.2749,
+            "gain_ratio": 0.0,
+            "depth": 2,
+            "branches": {
+              "HIGH": {
+                "is_leaf": false,
+                "split_attribute": "season",
+                "sample_count": 4,
+                "entropy": 1.0,
+                "gain": 1.0,
+                "gain_ratio": 0.0,
+                "depth": 3,
+                "branches": {
+                  "FESTIVE": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MONSOON": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "SUMMER": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 2,
+                    "class_distribution": {
+                      "0": 2
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "LOW": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 5,
+                "class_distribution": {
+                  "0": 5
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MEDIUM": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 10,
+                "class_distribution": {
+                  "0": 10
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          },
+          "NORMAL": {
+            "is_leaf": true,
+            "prediction": 20,
+            "sample_count": 47,
+            "class_distribution": {
+              "20": 47
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "OVERSTOCK": {
+            "is_leaf": true,
+            "prediction": 20,
+            "sample_count": 23,
+            "class_distribution": {
+              "20": 23
+            },
+            "entropy": 0.0,
+            "depth": 2
+          }
+        }
+      }
+    }
+  },
+  "c45TreeStructure": {
+    "is_leaf": false,
+    "split_attribute": "expiry_urgency",
+    "sample_count": 560,
+    "entropy": 1.7654,
+    "gain": 0.7829,
+    "gain_ratio": 0.5516,
+    "depth": 0,
+    "branches": {
+      "NEAR": {
+        "is_leaf": false,
+        "split_attribute": "stock_level",
+        "sample_count": 166,
+        "entropy": 1.3843,
+        "gain": 1.1133,
+        "gain_ratio": 0.7632,
+        "depth": 1,
+        "branches": {
+          "CRITICAL": {
+            "is_leaf": false,
+            "split_attribute": "velocity_tier",
+            "sample_count": 29,
+            "entropy": 0.2164,
+            "gain": 0.0819,
+            "gain_ratio": 0.0569,
+            "depth": 2,
+            "branches": {
+              "FAST": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 7,
+                "class_distribution": {
+                  "0": 7
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MODERATE": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 16,
+                "class_distribution": {
+                  "0": 16
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "SLOW": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 6,
+                "entropy": 0.65,
+                "gain": 0.65,
+                "gain_ratio": 1.0,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 5,
+                    "class_distribution": {
+                      "0": 5
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              }
+            }
+          },
+          "NORMAL": {
+            "is_leaf": true,
+            "prediction": 10,
+            "sample_count": 85,
+            "class_distribution": {
+              "10": 85
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "OVERSTOCK": {
+            "is_leaf": false,
+            "split_attribute": "margin_tier",
+            "sample_count": 52,
+            "entropy": 0.7444,
+            "gain": 0.7444,
+            "gain_ratio": 0.491,
+            "depth": 2,
+            "branches": {
+              "HIGH": {
+                "is_leaf": true,
+                "prediction": 15,
+                "sample_count": 17,
+                "class_distribution": {
+                  "15": 17
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "LOW": {
+                "is_leaf": true,
+                "prediction": 10,
+                "sample_count": 11,
+                "class_distribution": {
+                  "10": 11
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MEDIUM": {
+                "is_leaf": true,
+                "prediction": 15,
+                "sample_count": 24,
+                "class_distribution": {
+                  "15": 24
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          }
+        }
+      },
+      "SAFE": {
+        "is_leaf": false,
+        "split_attribute": "velocity_tier",
+        "sample_count": 305,
+        "entropy": 0.8021,
+        "gain": 0.2854,
+        "gain_ratio": 0.1901,
+        "depth": 1,
+        "branches": {
+          "FAST": {
+            "is_leaf": true,
+            "prediction": 0,
+            "sample_count": 64,
+            "class_distribution": {
+              "0": 64
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "MODERATE": {
+            "is_leaf": false,
+            "split_attribute": "season",
+            "sample_count": 148,
+            "entropy": 0.4516,
+            "gain": 0.2496,
+            "gain_ratio": 0.1273,
+            "depth": 2,
+            "branches": {
+              "FESTIVE": {
+                "is_leaf": false,
+                "split_attribute": "stock_level",
+                "sample_count": 30,
+                "entropy": 0.9968,
+                "gain": 0.9968,
+                "gain_ratio": 0.6514,
+                "depth": 3,
+                "branches": {
+                  "CRITICAL": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 8,
+                    "class_distribution": {
+                      "0": 8
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "NORMAL": {
+                    "is_leaf": true,
+                    "prediction": 5,
+                    "sample_count": 14,
+                    "class_distribution": {
+                      "5": 14
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "OVERSTOCK": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 8,
+                    "class_distribution": {
+                      "0": 8
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "MONSOON": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 52,
+                "class_distribution": {
+                  "0": 52
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "SUMMER": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 36,
+                "class_distribution": {
+                  "0": 36
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "WINTER": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 30,
+                "class_distribution": {
+                  "0": 30
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          },
+          "SLOW": {
+            "is_leaf": false,
+            "split_attribute": "stock_level",
+            "sample_count": 93,
+            "entropy": 0.9758,
+            "gain": 0.6723,
+            "gain_ratio": 0.4516,
+            "depth": 2,
+            "branches": {
+              "CRITICAL": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 17,
+                "entropy": 0.5226,
+                "gain": 0.2873,
+                "gain_ratio": 0.1855,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": false,
+                    "split_attribute": "season",
+                    "sample_count": 4,
+                    "entropy": 1.0,
+                    "gain": 1.0,
+                    "gain_ratio": 1.0,
+                    "depth": 4,
+                    "branches": {
+                      "FESTIVE": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "SUMMER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "0": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      }
+                    }
+                  },
+                  "LOW": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 6,
+                    "class_distribution": {
+                      "0": 6
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 7,
+                    "class_distribution": {
+                      "0": 7
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "NORMAL": {
+                "is_leaf": false,
+                "split_attribute": "margin_tier",
+                "sample_count": 44,
+                "entropy": 0.4395,
+                "gain": 0.1764,
+                "gain_ratio": 0.1148,
+                "depth": 3,
+                "branches": {
+                  "HIGH": {
+                    "is_leaf": false,
+                    "split_attribute": "season",
+                    "sample_count": 13,
+                    "entropy": 0.8905,
+                    "gain": 0.8905,
+                    "gain_ratio": 0.4726,
+                    "depth": 4,
+                    "branches": {
+                      "FESTIVE": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "MONSOON": {
+                        "is_leaf": true,
+                        "prediction": 10,
+                        "sample_count": 2,
+                        "class_distribution": {
+                          "10": 2
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "SUMMER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 4,
+                        "class_distribution": {
+                          "0": 4
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      },
+                      "WINTER": {
+                        "is_leaf": true,
+                        "prediction": 0,
+                        "sample_count": 5,
+                        "class_distribution": {
+                          "0": 5
+                        },
+                        "entropy": 0.0,
+                        "depth": 5
+                      }
+                    }
+                  },
+                  "LOW": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 11,
+                    "class_distribution": {
+                      "0": 11
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MEDIUM": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 20,
+                    "class_distribution": {
+                      "0": 20
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "OVERSTOCK": {
+                "is_leaf": true,
+                "prediction": 10,
+                "sample_count": 32,
+                "class_distribution": {
+                  "10": 32
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          }
+        }
+      },
+      "URGENT": {
+        "is_leaf": false,
+        "split_attribute": "stock_level",
+        "sample_count": 89,
+        "entropy": 0.8517,
+        "gain": 0.7481,
+        "gain_ratio": 0.5101,
+        "depth": 1,
+        "branches": {
+          "CRITICAL": {
+            "is_leaf": false,
+            "split_attribute": "margin_tier",
+            "sample_count": 19,
+            "entropy": 0.4855,
+            "gain": 0.2749,
+            "gain_ratio": 0.1874,
+            "depth": 2,
+            "branches": {
+              "HIGH": {
+                "is_leaf": false,
+                "split_attribute": "season",
+                "sample_count": 4,
+                "entropy": 1.0,
+                "gain": 1.0,
+                "gain_ratio": 0.6667,
+                "depth": 3,
+                "branches": {
+                  "FESTIVE": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "MONSOON": {
+                    "is_leaf": true,
+                    "prediction": 10,
+                    "sample_count": 1,
+                    "class_distribution": {
+                      "10": 1
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  },
+                  "SUMMER": {
+                    "is_leaf": true,
+                    "prediction": 0,
+                    "sample_count": 2,
+                    "class_distribution": {
+                      "0": 2
+                    },
+                    "entropy": 0.0,
+                    "depth": 4
+                  }
+                }
+              },
+              "LOW": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 5,
+                "class_distribution": {
+                  "0": 5
+                },
+                "entropy": 0.0,
+                "depth": 3
+              },
+              "MEDIUM": {
+                "is_leaf": true,
+                "prediction": 0,
+                "sample_count": 10,
+                "class_distribution": {
+                  "0": 10
+                },
+                "entropy": 0.0,
+                "depth": 3
+              }
+            }
+          },
+          "NORMAL": {
+            "is_leaf": true,
+            "prediction": 20,
+            "sample_count": 47,
+            "class_distribution": {
+              "20": 47
+            },
+            "entropy": 0.0,
+            "depth": 2
+          },
+          "OVERSTOCK": {
+            "is_leaf": true,
+            "prediction": 20,
+            "sample_count": 23,
+            "class_distribution": {
+              "20": 23
+            },
+            "entropy": 0.0,
+            "depth": 2
+          }
+        }
+      }
+    }
+  }
+}

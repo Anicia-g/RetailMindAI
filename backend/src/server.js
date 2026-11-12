@@ -4,7 +4,7 @@ const { connectDB } = require('./config/db');
 
 const startServer = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to MySQL (XAMPP)
     await connectDB();
 
     const server = app.listen(config.port, () => {

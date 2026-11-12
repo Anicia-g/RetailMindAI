@@ -1,13 +1,26 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const Otp = require('../models/Otp');
-const User = require('../models/User');
+const userRepository = require('../repositories/userRepository');
 const auditService = require('./auditService');
 const config = require('../config/env');
+const db = require('../config/db');
+
+// In-memory OTP storage conforming to zero-extra-table MySQL constraint
+const otpStore = new Map();
+
+// Periodic cleanup of expired entries (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of otpStore.entries()) {
+    if (entry.expiresAt && new Date(entry.expiresAt).getTime() < now) {
+      otpStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 class OtpService {
   /**
-   * Generates a cryptographically secure 6-digit OTP and stores its bcrypt hash
+   * Generates a cryptographically secure 6-digit OTP and stores its bcrypt hash in memory
    */
   async sendOtp(identifier, purpose = 'VERIFICATION', reqContext = {}) {
     if (!identifier) {
@@ -15,14 +28,10 @@ class OtpService {
     }
 
     const cleanIdentifier = String(identifier).trim().toLowerCase();
+    const storeKey = `${cleanIdentifier}:${purpose}`;
 
     // 1. Check Resend Cooldown (60 seconds)
-    const existingOtp = await Otp.findOne({
-      identifier: cleanIdentifier,
-      purpose,
-      isVerified: false,
-    }).sort({ createdAt: -1 });
-
+    const existingOtp = otpStore.get(storeKey);
     if (existingOtp && existingOtp.lastSentAt) {
       const elapsedSeconds = Math.floor((Date.now() - new Date(existingOtp.lastSentAt).getTime()) / 1000);
       const cooldownPeriod = config.otpCooldownSeconds || 60;
@@ -33,7 +42,6 @@ class OtpService {
     }
 
     // 2. Generate Cryptographically Secure 6-digit numeric OTP
-    // In strict production, crypto.randomInt(100000, 1000000) generates uniformly distributed 6-digit ints
     const rawOtp = crypto.randomInt(100000, 1000000).toString();
 
     // 3. Hash OTP with bcrypt
@@ -43,10 +51,8 @@ class OtpService {
     const expiryMinutes = config.otpExpiryMinutes || 5;
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
-    // 4. Invalidate prior active OTPs for this identifier & purpose
-    await Otp.deleteMany({ identifier: cleanIdentifier, purpose });
-
-    await Otp.create({
+    // 4. Save to in-memory store
+    otpStore.set(storeKey, {
       identifier: cleanIdentifier,
       otpHash,
       purpose,
@@ -57,7 +63,7 @@ class OtpService {
       expiresAt,
     });
 
-    // 5. Mask target identifier for safe display (e.g. j***@example.com or +91 98*** 1234)
+    // 5. Mask target identifier for safe display
     let maskedTarget = cleanIdentifier;
     if (cleanIdentifier.includes('@')) {
       const [local, domain] = cleanIdentifier.split('@');
@@ -66,7 +72,7 @@ class OtpService {
       maskedTarget = `${cleanIdentifier.slice(0, 3)}***${cleanIdentifier.slice(-3)}`;
     }
 
-    // Audit log
+    // 6. Audit log
     await auditService.logSecurityEvent({
       action: 'OTP_SENT',
       userId: cleanIdentifier,
@@ -78,8 +84,8 @@ class OtpService {
       details: { purpose, expiresInMinutes: expiryMinutes },
     });
 
-    // Secure logging: never print raw OTP in production
-    if (config.env === 'development') {
+    // Secure logging: dev mode helper
+    if (config.env === 'development' || process.env.NODE_ENV === 'development') {
       console.log(`[OTP Service Dev Mode] Generated OTP for ${cleanIdentifier} [Purpose: ${purpose}]: ${rawOtp}`);
     }
 
@@ -89,8 +95,7 @@ class OtpService {
       maskedTarget,
       expiresIn: expiryMinutes * 60,
       cooldownSeconds: config.otpCooldownSeconds || 60,
-      // Debug OTP only returned if explicitly enabled in local dev environment
-      devOtp: config.env === 'development' && config.otpDevAutoVerify ? rawOtp : undefined,
+      devOtp: (config.env === 'development' || process.env.NODE_ENV === 'development') ? rawOtp : undefined,
     };
   }
 
@@ -104,18 +109,15 @@ class OtpService {
 
     const cleanIdentifier = String(identifier).trim().toLowerCase();
     const cleanOtp = String(rawOtp).trim();
+    const storeKey = `${cleanIdentifier}:${purpose}`;
 
     if (!/^\d{6}$/.test(cleanOtp)) {
       throw new Error('OTP code must be exactly 6 numeric digits.');
     }
 
-    const otpDoc = await Otp.findOne({
-      identifier: cleanIdentifier,
-      purpose,
-      isVerified: false,
-    }).sort({ createdAt: -1 });
+    const otpEntry = otpStore.get(storeKey);
 
-    if (!otpDoc) {
+    if (!otpEntry) {
       await auditService.logSecurityEvent({
         action: 'OTP_VERIFY_FAILED',
         userId: cleanIdentifier,
@@ -129,23 +131,22 @@ class OtpService {
     }
 
     // Check expiration
-    if (new Date() > otpDoc.expiresAt) {
-      await Otp.deleteOne({ _id: otpDoc._id });
+    if (new Date() > new Date(otpEntry.expiresAt)) {
+      otpStore.delete(storeKey);
       throw new Error('Verification code has expired. Please request a new OTP.');
     }
 
     // Check attempt limits (max 5)
-    if (otpDoc.attempts >= otpDoc.maxAttempts) {
-      await Otp.deleteOne({ _id: otpDoc._id });
+    if (otpEntry.attempts >= otpEntry.maxAttempts) {
+      otpStore.delete(storeKey);
       throw new Error('Too many invalid attempts. For your security, this code has been invalidated.');
     }
 
     // Verify bcrypt hash
-    const isMatch = await bcrypt.compare(cleanOtp, otpDoc.otpHash);
+    const isMatch = await bcrypt.compare(cleanOtp, otpEntry.otpHash);
     if (!isMatch) {
-      otpDoc.attempts += 1;
-      await otpDoc.save();
-      const remainingAttempts = Math.max(0, otpDoc.maxAttempts - otpDoc.attempts);
+      otpEntry.attempts += 1;
+      const remainingAttempts = Math.max(0, otpEntry.maxAttempts - otpEntry.attempts);
 
       await auditService.logSecurityEvent({
         action: 'OTP_VERIFY_FAILED',
@@ -158,15 +159,14 @@ class OtpService {
       });
 
       if (remainingAttempts === 0) {
-        await Otp.deleteOne({ _id: otpDoc._id });
+        otpStore.delete(storeKey);
         throw new Error('Too many invalid attempts. Verification code has been invalidated.');
       }
 
       throw new Error(`Invalid verification code. ${remainingAttempts} attempts remaining.`);
     }
 
-    otpDoc.isVerified = true;
-    await otpDoc.save();
+    otpEntry.isVerified = true;
 
     await auditService.logSecurityEvent({
       action: 'OTP_VERIFY_SUCCESS',
@@ -194,34 +194,40 @@ class OtpService {
     }
 
     const cleanIdentifier = String(identifier).trim().toLowerCase();
+    const storeKey = `${cleanIdentifier}:PASSWORD_RESET`;
 
     // Verify OTP first
     await this.verifyOtp(cleanIdentifier, rawOtp, 'PASSWORD_RESET', reqContext);
 
-    const user = await User.findOne({
-      $or: [{ email: cleanIdentifier }, { phone: cleanIdentifier }],
-    }).select('+passwordHash');
+    // Find user by email or phone in MySQL tbl_User
+    const users = await db.query(
+      'SELECT * FROM tbl_User WHERE (LOWER(txt_Email) = ? OR txt_Phone_Number = ?) AND bit_IsActive = 1 LIMIT 1',
+      [cleanIdentifier, cleanIdentifier]
+    );
 
-    if (!user) {
+    if (users.length === 0) {
       // Account enumeration protection: Return generic success response
+      otpStore.delete(storeKey);
       return {
         success: true,
         message: 'Password reset request processed. You may now sign in with your updated credentials.',
       };
     }
 
+    const user = users[0];
     const salt = await bcrypt.genSalt(10);
-    user.passwordHash = await bcrypt.hash(newPassword, salt);
-    await user.save();
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await userRepository.updatePassword(user.int_User_Id, passwordHash, 'OTP_RESET');
 
     // Clean up verified OTP
-    await Otp.deleteMany({ identifier: cleanIdentifier, purpose: 'PASSWORD_RESET' });
+    otpStore.delete(storeKey);
 
     await auditService.logSecurityEvent({
       action: 'PASSWORD_RESET_SUCCESS',
-      userId: user._id.toString(),
-      email: user.email,
-      role: user.role,
+      userId: String(user.int_User_Id),
+      email: user.txt_Email,
+      role: 'USER',
       resource: 'AUTH_PASSWORD',
       status: 'SUCCESS',
       ipAddress: reqContext.ip || '',

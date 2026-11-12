@@ -1,0 +1,101 @@
+{
+  "modelName": "customer-kmeans-rfm",
+  "modelVersion": "1.0.0",
+  "algorithm": "K-Means Clustering",
+  "datasetSize": 600,
+  "k": 5,
+  "inertia": 188.86,
+  "silhouetteScore": 0.5358,
+  "features": [
+    "recency",
+    "frequency",
+    "monetary"
+  ],
+  "preprocessing": "log1p + StandardScaler",
+  "candidateEvaluation": [
+    {
+      "k": 2,
+      "inertia": 777.44,
+      "silhouette": 0.5196
+    },
+    {
+      "k": 3,
+      "inertia": 489.1,
+      "silhouette": 0.5508
+    },
+    {
+      "k": 4,
+      "inertia": 252.31,
+      "silhouette": 0.5576
+    },
+    {
+      "k": 5,
+      "inertia": 188.86,
+      "silhouette": 0.5358
+    },
+    {
+      "k": 6,
+      "inertia": 153.36,
+      "silhouette": 0.5051
+    },
+    {
+      "k": 7,
+      "inertia": 126.71,
+      "silhouette": 0.4893
+    },
+    {
+      "k": 8,
+      "inertia": 108.25,
+      "silhouette": 0.493
+    }
+  ],
+  "clusterProfiles": [
+    {
+      "cluster": 0,
+      "count": 110,
+      "avg_recency": 7.1,
+      "avg_frequency": 11.8,
+      "avg_monetary": 16982.61,
+      "segment": "Loyal"
+    },
+    {
+      "cluster": 1,
+      "count": 100,
+      "avg_recency": 149.4,
+      "avg_frequency": 1.2,
+      "avg_monetary": 554.84,
+      "segment": "Inactive"
+    },
+    {
+      "cluster": 2,
+      "count": 150,
+      "avg_recency": 7.5,
+      "avg_frequency": 2.1,
+      "avg_monetary": 1997.36,
+      "segment": "Growing"
+    },
+    {
+      "cluster": 3,
+      "count": 139,
+      "avg_recency": 66.1,
+      "avg_frequency": 13.1,
+      "avg_monetary": 19917.66,
+      "segment": "At Risk"
+    },
+    {
+      "cluster": 4,
+      "count": 101,
+      "avg_recency": 4.4,
+      "avg_frequency": 28.0,
+      "avg_monetary": 61636.56,
+      "segment": "VIP"
+    }
+  ],
+  "clusterMapping": {
+    "4": "VIP",
+    "3": "At Risk",
+    "0": "Loyal",
+    "2": "Growing",
+    "1": "Inactive"
+  }
+}

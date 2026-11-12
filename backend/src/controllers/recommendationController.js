@@ -1,13 +1,13 @@
 const mlClientService = require('../services/mlClientService');
 const recommendationService = require('../services/recommendationService');
-const AiRecommendation = require('../models/AiRecommendation');
+const aiRecommendationRepository = require('../repositories/aiRecommendationRepository');
 const { successResponse } = require('../utils/apiResponse');
 
 class RecommendationController {
   async getRecommendations(req, res, next) {
     try {
       const type = req.query.type || 'personalized';
-      const customerId = req.user?.id || req.query.customerId || 'cust-001';
+      const customerId = req.user?.id || req.query.customerId || 1;
 
       if (type === 'frequently-bought-together' && req.query.productId) {
         const mlRecs = await mlClientService.getFrequentlyBoughtTogether(req.query.productId, req.query.limit || 4);
@@ -23,20 +23,15 @@ class RecommendationController {
         if (mlRecs && mlRecs.recommendations && mlRecs.recommendations.length > 0) {
           // Persist personalized recommendation log
           try {
-            await AiRecommendation.create({
-              recommendationType: 'PERSONALIZED',
-              customerId: customerId,
-              recommendedProducts: mlRecs.recommendations.map((r) => ({
-                productId: r.productId,
-                name: r.name,
-                category: r.category,
-                price: r.price,
-                confidence: r.affinityScore || 0.85,
-              })),
-              modelVersion: 'recommendation_v1',
-              generatedDate: new Date(),
-              txt_Created_By: req.user?.email || 'system',
-              dte_Created_Date: new Date(),
+            await aiRecommendationRepository.create({
+              type: 'PERSONALIZED',
+              customerId: Number(customerId) || 1,
+              title: `Personalized recommendation for customer #${customerId}`,
+              description: `Personalized recommendations generated via ML Engine`,
+              confidenceScore: 0.85,
+              status: 'Active',
+              modelName: 'recommendation_v1',
+              isActive: true,
             });
           } catch (dbErr) {
             console.warn('[RecommendationController] Failed to persist AiRecommendation record:', dbErr.message);
@@ -62,22 +57,15 @@ class RecommendationController {
       if (data && data.recommendations) {
         // Persist bundle cross-sell recommendation
         try {
-          await AiRecommendation.create({
-            recommendationType: 'BUNDLE_CROSS_SELL',
-            productId: productId,
-            productName: data.productName || '',
-            recommendedProducts: data.recommendations.map((r) => ({
-              productId: r.productId,
-              name: r.name,
-              category: r.category,
-              price: r.price,
-              confidence: r.confidence,
-              lift: r.lift,
-            })),
-            modelVersion: 'recommendation_v1',
-            generatedDate: new Date(),
-            txt_Created_By: req.user?.email || 'system',
-            dte_Created_Date: new Date(),
+          await aiRecommendationRepository.create({
+            type: 'BUNDLE_CROSS_SELL',
+            productId: Number(productId) || 1,
+            title: `Frequently bought together with product #${productId}`,
+            description: data.productName || 'Bundle cross sell recommendations',
+            confidenceScore: 0.9,
+            status: 'Active',
+            modelName: 'recommendation_v1',
+            isActive: true,
           });
         } catch (dbErr) {
           console.warn('[RecommendationController] Failed to persist AiRecommendation record:', dbErr.message);
@@ -92,3 +80,4 @@ class RecommendationController {
 }
 
 module.exports = new RecommendationController();
+

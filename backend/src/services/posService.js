@@ -1,47 +1,68 @@
-const mongoose = require('mongoose');
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const Order = require('../models/Order');
-const Payment = require('../models/Payment');
-const Customer = require('../models/Customer');
-const User = require('../models/User');
-const StockTransaction = require('../models/StockTransaction');
+const productRepository = require('../repositories/productRepository');
+const inventoryRepository = require('../repositories/inventoryRepository');
+const orderRepository = require('../repositories/orderRepository');
+const orderItemRepository = require('../repositories/orderItemRepository');
+const paymentRepository = require('../repositories/paymentRepository');
+const paymentMethodRepository = require('../repositories/paymentMethodRepository');
+const customerRepository = require('../repositories/customerRepository');
+const stockTransactionRepository = require('../repositories/stockTransactionRepository');
+const storeRepository = require('../repositories/storeRepository');
+const userRepository = require('../repositories/userRepository');
+const { withTransaction } = require('../config/db');
 
 class PosService {
-  async processSale({
-    customerId = null,
-    customerName = 'Walk-in Shopper',
-    sellerId = null,
-    sellerName = null,
-    storeId = 'store-01',
-    storeName = 'Indiranagar Flagship (Store 01)',
-    items = [],
-    paymentMethod = 'UPI',
-    discountAmount = 0,
-  }, currentUser = null) {
+  async processSale(
+    {
+      customerId = null,
+      customerName = 'Walk-in Shopper',
+      sellerId = null,
+      sellerName = null,
+      storeId = 'store-01',
+      storeName = 'Indiranagar Flagship (Store 01)',
+      items = [],
+      paymentMethod = 'UPI',
+      discountAmount = 0,
+    },
+    currentUser = null
+  ) {
     if (!items || items.length === 0) {
       throw new Error('Cannot process POS sale: Order items list is empty.');
     }
 
-    // Identify Seller details
-    const activeSellerId = sellerId || currentUser?.id || 'emp-001';
-    const activeSellerName = sellerName || currentUser?.name || 'Priya Sharma';
-    const activeStoreId = storeId || currentUser?.storeId || 'store-01';
-    const activeStoreName = storeName || currentUser?.store || 'Indiranagar Flagship (Store 01)';
+    // Resolve store
+    const storeNum = parseInt(String(storeId || currentUser?.storeId || '1').replace(/\D/g, ''), 10) || 1;
+    const storeRecord = await storeRepository.findById(storeNum);
+    const resolvedStoreName = storeRecord?.txt_Store_Name || storeName || currentUser?.store || 'Indiranagar Flagship (Store 01)';
 
+    // Resolve seller / user
+    const sellerNum = parseInt(String(sellerId || currentUser?.userId || currentUser?.id || '1').replace(/\D/g, ''), 10) || 1;
+    const sellerRecord = await userRepository.findById(sellerNum);
+    const resolvedSellerName = sellerRecord
+      ? `${sellerRecord.txt_First_Name} ${sellerRecord.txt_Last_Name || ''}`.trim()
+      : (sellerName || currentUser?.name || 'Priya Sharma');
+
+    // Resolve customer if provided
+    let customerRecord = null;
+    if (customerId) {
+      customerRecord = await customerRepository.findByIdOrCode(customerId);
+    }
+    const resolvedCustomerName = customerRecord
+      ? `${customerRecord.txt_First_Name} ${customerRecord.txt_Last_Name || ''}`.trim()
+      : customerName;
+
+    // Resolve payment method
+    const pmRecord = await paymentMethodRepository.findByCodeOrName(paymentMethod);
+    const paymentMethodId = pmRecord?.int_Payment_Method_Id || 1;
+
+    // Validate items and calculate totals
     let subtotal = 0;
     let totalDiscount = Number(discountAmount) || 0;
     let totalTax = 0;
     const validatedItems = [];
 
-    // 1. Validate all items and current stock before making any mutations
     for (const item of items) {
       const pId = item.productId || item.id;
-      const product = await Product.findOne({
-        $or: [{ productId: pId }, { sku: pId }, { _id: pId.match(/^[0-9a-fA-F]{24}$/) ? pId : null }],
-        bit_IsActive: true,
-      });
-
+      const product = await productRepository.findProductById(pId);
       if (!product) {
         throw new Error(`Product '${item.name || pId}' was not found in catalog.`);
       }
@@ -51,8 +72,11 @@ class PosService {
         throw new Error(`Invalid quantity ${qty} for product ${product.name}`);
       }
 
-      if (product.stock < qty) {
-        throw new Error(`Insufficient inventory for '${product.name}'. Available: ${product.stock}, Requested: ${qty}`);
+      // Check current stock in inventory
+      const inv = await inventoryRepository.findByProductAndStore(product.id, storeNum);
+      const availableStock = inv ? Number(inv.int_Quantity_On_Hand) : product.stock;
+      if (availableStock < qty) {
+        throw new Error(`Insufficient inventory for '${product.name}'. Available: ${availableStock}, Requested: ${qty}`);
       }
 
       const itemPrice = Number(item.price || product.price);
@@ -65,8 +89,9 @@ class PosService {
       totalTax += Number(product.tax || 0) * qty;
 
       validatedItems.push({
-        productDoc: product,
-        productId: product.productId,
+        product,
+        productId: product.id,
+        internalProductId: product.id,
         name: product.name,
         sku: product.sku,
         qty,
@@ -75,153 +100,111 @@ class PosService {
         discount: itemDiscount,
         total: itemTotal,
         image: product.image || item.image || '',
+        currentStock: availableStock,
       });
     }
 
     const totalAmount = Math.max(0, subtotal + totalTax);
     const orderNumber = `ORD-POS-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-    const orderId = `ord-${Date.now()}`;
 
-    // 2. Resolve Customer if provided
-    let customerDoc = null;
-    let resolvedCustomerName = customerName;
-    if (customerId) {
-      customerDoc = await Customer.findOne({
-        $or: [{ customerId }, { email: customerId }, { _id: customerId.match(/^[0-9a-fA-F]{24}$/) ? customerId : null }],
-      });
-      if (customerDoc) {
-        resolvedCustomerName = customerDoc.name;
-      }
-    }
-
-    // 3. Create the Order document
-    const order = await Order.create({
-      orderId,
-      orderNumber,
-      customerId: customerDoc?.customerId || customerId || 'cust-walkin',
-      customerName: resolvedCustomerName,
-      sellerId: activeSellerId,
-      sellerName: activeSellerName,
-      storeId: activeStoreId,
-      store: activeStoreName,
-      items: validatedItems.map(({ productDoc, ...rest }) => rest),
-      itemsCount: validatedItems.reduce((acc, i) => acc + i.qty, 0),
-      subtotal,
-      discount: totalDiscount,
-      tax: totalTax,
-      totalAmount,
-      orderType: 'POS_SALE',
-      status: 'Completed',
-      paymentStatus: 'Paid',
-      paymentMethod,
-      deliveryAddress: 'Walk-in Store POS',
-      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      txt_Created_By: activeSellerName,
-    });
-
-    // 4. Create the Payment document
-    const payment = await Payment.create({
-      paymentId: `PAY-${Date.now().toString().slice(-6)}`,
-      orderId: order.orderId,
-      customerName: resolvedCustomerName,
-      customerId: customerDoc?.customerId || null,
-      method: paymentMethod,
-      amount: totalAmount,
-      status: 'Completed',
-      gateway: paymentMethod === 'CASH' ? 'In-Store Cash Counter' : 'POS Card / UPI Terminal',
-      paidAt: new Date(),
-      txt_Created_By: activeSellerName,
-    });
-
-    // 5. Decrement inventory and log StockTransaction for each item
-    for (const item of validatedItems) {
-      const product = item.productDoc;
-      const previousStock = product.stock;
-      const newStock = Math.max(0, previousStock - item.qty);
-
-      product.stock = newStock;
-      product.unitsSold = (product.unitsSold || 0) + item.qty;
-      product.revenue = (product.revenue || 0) + item.total;
-      product.stockStatus = newStock <= product.reorderLevel / 2
-        ? 'Critical'
-        : newStock <= product.reorderLevel
-        ? 'Low Stock'
-        : 'Healthy';
-      product.expectedStockoutDays = product.dailyVelocity > 0
-        ? Number((newStock / product.dailyVelocity).toFixed(1))
-        : 30;
-      product.txt_Modified_By = activeSellerName;
-      product.dte_Modified_Date = new Date();
-      await product.save();
-
-      // Update Inventory
-      await Inventory.findOneAndUpdate(
-        { productId: product.productId },
+    return await withTransaction(async (conn) => {
+      // 1. Create tbl_Order
+      const createdOrder = await orderRepository.createOrder(
         {
-          currentStock: newStock,
-          status: product.stockStatus,
-          daysRemaining: product.expectedStockoutDays,
-          lastRestocked: new Date().toISOString().split('T')[0],
-        }
+          txt_Order_Number: orderNumber,
+          int_Store_Id: storeNum,
+          int_Customer_Id: customerRecord?.int_Customer_Id || null,
+          int_User_Id: sellerNum,
+          dte_Order_Date: new Date(),
+          txt_Order_Type: 'POS_SALE',
+          txt_Order_Status: 'Completed',
+          dec_Subtotal_Amount: subtotal,
+          dec_Discount_Amount: totalDiscount,
+          dec_Tax_Amount: totalTax,
+          dec_Shipping_Amount: 0,
+          dec_Total_Amount: totalAmount,
+          dec_Paid_Amount: totalAmount,
+          dec_Due_Amount: 0,
+          int_Payment_Method_Id: paymentMethodId,
+          txt_Payment_Status: 'Paid',
+          txt_Delivery_Address: 'Walk-in Store POS',
+          txt_Sales_Channel: 'POS',
+        },
+        resolvedSellerName,
+        conn
       );
 
-      // Log StockTransaction
-      await StockTransaction.create({
-        transactionId: `stx-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        productId: product.productId,
-        sku: product.sku,
-        storeId: activeStoreId,
-        type: 'SALE',
-        quantity: -item.qty,
-        previousStock,
-        newStock,
-        referenceId: order.orderId,
-        performedBy: activeSellerName,
-        reason: `POS Sale #${order.orderNumber}`,
-      });
-    }
+      // 2. Create tbl_Order_Item rows
+      for (const item of validatedItems) {
+        await orderItemRepository.createOrderItem(
+          {
+            int_Order_Id: createdOrder.int_Order_Id,
+            int_Product_Id: item.internalProductId,
+            int_Quantity: item.qty,
+            dec_Unit_Price: item.price,
+            dec_Discount_Amount: item.discount,
+            dec_Tax_Amount: (item.product.tax || 0) * item.qty,
+            dec_Total_Amount: item.total,
+            dec_Unit_Cost: item.product.costPrice || 0,
+            int_Unit_Id: item.product.unitId || 1,
+          },
+          resolvedSellerName,
+          conn
+        );
 
-    // 6. Update Customer stats if customer was resolved
-    if (customerDoc) {
-      customerDoc.orders = (customerDoc.orders || 0) + 1;
-      customerDoc.totalSpent = (customerDoc.totalSpent || 0) + totalAmount;
-      customerDoc.aov = Math.round(customerDoc.totalSpent / customerDoc.orders);
-      customerDoc.frequency = customerDoc.orders;
-      customerDoc.monetary = customerDoc.totalSpent;
-      customerDoc.recencyDays = 0;
-      customerDoc.lastPurchase = 'Just now (Store POS)';
-      customerDoc.smartCoins = (customerDoc.smartCoins || 0) + Math.floor(totalAmount * 0.05);
-      customerDoc.recentPurchases.unshift({
-        id: order.orderId,
-        date: new Date().toISOString().split('T')[0],
-        items: validatedItems.map((i) => `${i.name} (${i.qty}x)`).join(', ').slice(0, 80),
-        total: totalAmount,
-        payment: paymentMethod,
-      });
-      if (customerDoc.recentPurchases.length > 10) {
-        customerDoc.recentPurchases = customerDoc.recentPurchases.slice(0, 10);
+        // 3. Decrement Inventory stock
+        const newStock = Math.max(0, item.currentStock - item.qty);
+        await inventoryRepository.upsertStock(item.internalProductId, storeNum, newStock, resolvedSellerName, conn);
+
+        // 4. Record immutable StockTransaction
+        await stockTransactionRepository.createTransaction(
+          {
+            productId: item.internalProductId,
+            storeId: storeNum,
+            type: 'SALE',
+            quantity: -item.qty,
+            referenceNumber: orderNumber,
+            referenceType: 'POS_SALE',
+            referenceId: createdOrder.int_Order_Id,
+            unitCost: item.product.costPrice || 0,
+            performedByUserId: sellerNum,
+            remarks: `POS Sale #${orderNumber}`,
+            user: resolvedSellerName,
+          },
+          conn
+        );
       }
-      await customerDoc.save();
-    }
 
-    // 7. Update Seller stats if seller exists in User model
-    try {
-      const sellerUser = await User.findOne({
-        $or: [{ _id: activeSellerId.match(/^[0-9a-fA-F]{24}$/) ? activeSellerId : null }, { email: activeSellerId }, { name: activeSellerName }],
-      });
-      if (sellerUser) {
-        sellerUser.salesAmount = (sellerUser.salesAmount || 0) + totalAmount;
-        sellerUser.ordersHandled = (sellerUser.ordersHandled || 0) + 1;
-        await sellerUser.save();
+      // 5. Create tbl_Payment
+      const createdPayment = await paymentRepository.createPayment(
+        {
+          orderId: createdOrder.int_Order_Id,
+          paymentMethodId,
+          amount: totalAmount,
+          status: 'Completed',
+          gateway: paymentMethod === 'CASH' ? 'In-Store Cash Counter' : 'POS Card / UPI Terminal',
+          receivedByUserId: sellerNum,
+          storeId: storeNum,
+          user: resolvedSellerName,
+        },
+        conn
+      );
+
+      // 6. Update customer statistics if registered
+      if (customerRecord) {
+        await customerRepository.updateCustomerStats(customerRecord.int_Customer_Id, totalAmount, conn);
       }
-    } catch (e) {}
 
-    return {
-      success: true,
-      order,
-      payment,
-      message: `Sale #${order.orderNumber} completed successfully.`,
-    };
+      // 7. Load populated order DTO
+      const orderDTO = await orderRepository.findOrderById(createdOrder.int_Order_Id, conn);
+
+      return {
+        success: true,
+        order: orderDTO,
+        payment: paymentRepository.toDTO(createdPayment),
+        message: `Sale #${orderNumber} completed successfully.`,
+      };
+    });
   }
 }
 

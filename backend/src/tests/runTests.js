@@ -1,7 +1,7 @@
 const http = require('http');
 const app = require('../app');
 const { connectDB } = require('../config/db');
-const { runSeed } = require('../utils/seedData');
+const seedDatabase = require('../utils/seedMySQL');
 
 let server;
 let baseUrl;
@@ -65,7 +65,7 @@ const runAllTests = async () => {
   try {
     console.log('🔄 Initializing Backend Testing Suite...');
     await connectDB();
-    await runSeed();
+    await seedDatabase();
     console.log('🌱 Test database seeded.\n');
 
     // Spin up ephemeral test server on random free port

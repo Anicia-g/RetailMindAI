@@ -1,9 +1,4 @@
-const Order = require('../models/Order');
-const Payment = require('../models/Payment');
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const Customer = require('../models/Customer');
-const User = require('../models/User');
+const db = require('../config/db');
 
 class DataQualityService {
   /**
@@ -14,58 +9,59 @@ class DataQualityService {
     const warnings = [];
 
     // 1. Check for negative stock levels
-    const negativeStockProducts = await Product.find({ stock: { $lt: 0 } });
-    if (negativeStockProducts.length > 0) {
-      issues.push({
-        type: 'NEGATIVE_STOCK_PRODUCT',
-        severity: 'HIGH',
-        count: negativeStockProducts.length,
-        details: negativeStockProducts.map((p) => ({ id: p.productId, sku: p.sku, stock: p.stock })),
-      });
-    }
-
-    const negativeStockInventory = await Inventory.find({ currentStock: { $lt: 0 } });
+    const negativeStockInventory = await db.query(
+      'SELECT int_Inventory_Id AS id, int_Product_Id AS productId, int_Quantity_Available AS stock FROM tbl_Inventory WHERE int_Quantity_Available < 0'
+    );
     if (negativeStockInventory.length > 0) {
       issues.push({
         type: 'NEGATIVE_STOCK_INVENTORY',
         severity: 'HIGH',
         count: negativeStockInventory.length,
-        details: negativeStockInventory.map((i) => ({ id: i.inventoryId, sku: i.sku, stock: i.currentStock })),
+        details: negativeStockInventory.map((i) => ({ id: String(i.id), productId: String(i.productId), stock: Number(i.stock) })),
       });
     }
 
     // 2. Check for Orders without valid items or zero quantities
-    const invalidItemOrders = await Order.find({
-      $or: [{ items: { $size: 0 } }, { 'items.qty': { $lte: 0 } }],
-    });
+    const invalidItemOrders = await db.query(`
+      SELECT o.int_Order_Id AS orderId, COUNT(oi.int_Order_Item_Id) AS itemCount, COALESCE(MIN(oi.int_Quantity), 0) AS minQty
+      FROM tbl_Order o
+      LEFT JOIN tbl_Order_Item oi ON o.int_Order_Id = oi.int_Order_Id AND oi.bit_IsActive = 1
+      WHERE o.bit_IsActive = 1
+      GROUP BY o.int_Order_Id
+      HAVING itemCount = 0 OR minQty <= 0
+    `);
     if (invalidItemOrders.length > 0) {
       issues.push({
         type: 'INVALID_ORDER_ITEMS',
         severity: 'HIGH',
         count: invalidItemOrders.length,
-        details: invalidItemOrders.map((o) => o.orderId),
+        details: invalidItemOrders.map((o) => String(o.orderId)),
       });
     }
 
     // 3. Reconcile Completed Orders with Payments
-    const completedOrders = await Order.find({ status: { $in: ['Completed', 'Delivered'] } });
-    const completedPayments = await Payment.find({ status: 'Completed' });
+    const completedOrders = await db.query(
+      "SELECT int_Order_Id AS orderId, dec_Total_Amount AS totalAmount FROM tbl_Order WHERE bit_IsActive = 1 AND txt_Order_Status IN ('COMPLETED', 'DELIVERED')"
+    );
+    const completedPayments = await db.query(
+      "SELECT int_Payment_Id AS paymentId, int_Source_Id AS orderId FROM tbl_Payment WHERE bit_IsActive = 1 AND txt_Payment_Status = 'COMPLETED' AND txt_Payment_Source_Type = 'ORDER'"
+    );
 
-    const paymentOrderIds = new Set(completedPayments.map((p) => p.orderId));
-    const ordersWithoutPayment = completedOrders.filter((o) => !paymentOrderIds.has(o.orderId));
+    const paymentOrderIds = new Set(completedPayments.map((p) => String(p.orderId)));
+    const ordersWithoutPayment = completedOrders.filter((o) => !paymentOrderIds.has(String(o.orderId)));
 
     if (ordersWithoutPayment.length > 0) {
       warnings.push({
         type: 'ORDER_WITHOUT_PAYMENT_RECORD',
         severity: 'MEDIUM',
         count: ordersWithoutPayment.length,
-        description: 'Completed orders without matching payment records in payments collection.',
-        details: ordersWithoutPayment.map((o) => ({ orderId: o.orderId, totalAmount: o.totalAmount })),
+        description: 'Completed orders without matching payment records in payments table.',
+        details: ordersWithoutPayment.map((o) => ({ orderId: String(o.orderId), totalAmount: Number(o.totalAmount) })),
       });
     }
 
-    const orderIdsSet = new Set(completedOrders.map((o) => o.orderId));
-    const paymentsWithoutOrder = completedPayments.filter((p) => !orderIdsSet.has(p.orderId));
+    const orderIdsSet = new Set(completedOrders.map((o) => String(o.orderId)));
+    const paymentsWithoutOrder = completedPayments.filter((p) => !orderIdsSet.has(String(p.orderId)));
 
     if (paymentsWithoutOrder.length > 0) {
       warnings.push({
@@ -73,35 +69,30 @@ class DataQualityService {
         severity: 'MEDIUM',
         count: paymentsWithoutOrder.length,
         description: 'Completed payment records without matching completed order records.',
-        details: paymentsWithoutOrder.map((p) => ({ paymentId: p.paymentId, orderId: p.orderId })),
+        details: paymentsWithoutOrder.map((p) => ({ paymentId: String(p.paymentId), orderId: String(p.orderId) })),
       });
     }
 
     // 4. Verify Product References in Orders
-    const allProducts = await Product.find({}, { productId: 1 });
-    const validProductIds = new Set(allProducts.map((p) => p.productId));
+    const orphanedItems = await db.query(`
+      SELECT oi.int_Order_Item_Id AS itemId, oi.int_Product_Id AS productId
+      FROM tbl_Order_Item oi
+      LEFT JOIN tbl_Product p ON oi.int_Product_Id = p.int_Product_Id
+      WHERE oi.bit_IsActive = 1 AND p.int_Product_Id IS NULL
+    `);
 
-    let orphanedItemCount = 0;
-    completedOrders.forEach((o) => {
-      o.items.forEach((it) => {
-        if (!validProductIds.has(it.productId)) {
-          orphanedItemCount++;
-        }
-      });
-    });
-
-    if (orphanedItemCount > 0) {
+    if (orphanedItems.length > 0) {
       warnings.push({
         type: 'ORPHANED_ORDER_PRODUCT_REFERENCE',
         severity: 'LOW',
-        count: orphanedItemCount,
-        description: 'Order items referring to archived or deleted product SKUs.',
+        count: orphanedItems.length,
+        description: 'Order items referring to archived or non-existent product IDs.',
       });
     }
 
     const totalAuditedOrders = completedOrders.length;
     const totalAuditedPayments = completedPayments.length;
-    const totalAuditedProducts = allProducts.length;
+    const totalAuditedProducts = (await db.query('SELECT COUNT(*) AS cnt FROM tbl_Product WHERE bit_IsActive = 1'))[0]?.cnt || 0;
 
     const healthStatus = issues.length === 0 ? (warnings.length === 0 ? 'HEALTHY' : 'WARNING') : 'CRITICAL';
 
@@ -111,7 +102,7 @@ class DataQualityService {
       summary: {
         totalAuditedOrders,
         totalAuditedPayments,
-        totalAuditedProducts,
+        totalAuditedProducts: Number(totalAuditedProducts),
         criticalIssueCount: issues.length,
         warningCount: warnings.length,
       },
@@ -122,3 +113,4 @@ class DataQualityService {
 }
 
 module.exports = new DataQualityService();
+

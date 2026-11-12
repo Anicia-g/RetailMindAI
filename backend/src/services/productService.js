@@ -1,194 +1,105 @@
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
+const productRepository = require('../repositories/productRepository');
+const categoryRepository = require('../repositories/categoryRepository');
 
 class ProductService {
   async getAllProducts(filters = {}) {
-    const query = { bit_IsActive: true };
-
-    if (filters.search) {
-      const q = filters.search.trim();
-      query.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { sku: { $regex: q, $options: 'i' } },
-        { brand: { $regex: q, $options: 'i' } },
-        { category: { $regex: q, $options: 'i' } },
-      ];
-    }
-
-    if (filters.category && filters.category !== 'All') {
-      query.category = filters.category;
-    }
-
-    if (filters.brand && filters.brand !== 'All') {
-      query.brand = filters.brand;
-    }
-
-    if (filters.stockStatus && filters.stockStatus !== 'All') {
-      if (filters.stockStatus === 'Low Stock') {
-        query.$expr = { $lte: ['$stock', '$reorderLevel'] };
-      } else if (filters.stockStatus === 'Healthy') {
-        query.$expr = { $gt: ['$stock', '$reorderLevel'] };
-      } else {
-        query.stockStatus = filters.stockStatus;
-      }
-    }
-
-    if (filters.store && filters.store !== 'All') {
-      query.$or = [
-        { store: { $regex: filters.store, $options: 'i' } },
-        { storeId: filters.store },
-        { 'storeAssignments.storeId': filters.store },
-        { 'storeAssignments.storeName': { $regex: filters.store, $options: 'i' } },
-      ];
-    }
-
-    if (filters.demandLevel && filters.demandLevel !== 'All') {
-      query.demandLevel = filters.demandLevel;
-    }
-
-    const sortOptions = {};
-    if (filters.sortBy) {
-      const sortOrder = filters.order === 'desc' ? -1 : 1;
-      sortOptions[filters.sortBy] = sortOrder;
-    } else {
-      sortOptions.createdAt = -1;
-    }
-
     const page = parseInt(filters.page || '1', 10);
     const limit = parseInt(filters.limit || '50', 10);
-    const skip = (page - 1) * limit;
 
     const [products, total] = await Promise.all([
-      Product.find(query).sort(sortOptions).skip(skip).limit(limit),
-      Product.countDocuments(query),
+      productRepository.findAllProducts({ ...filters, page, limit }),
+      productRepository.countProducts(filters),
     ]);
 
     return { products, total, page, limit };
   }
 
-  async getProductsByStore(storeIdOrName) {
-    if (!storeIdOrName || storeIdOrName === 'All') {
-      return await Product.find({ bit_IsActive: true });
-    }
-
-    const cleanStore = String(storeIdOrName).trim();
-    return await Product.find({
-      bit_IsActive: true,
-      $or: [
-        { storeId: cleanStore },
-        { store: { $regex: cleanStore, $options: 'i' } },
-        { 'storeAssignments.storeId': cleanStore },
-        { 'storeAssignments.storeName': { $regex: cleanStore, $options: 'i' } },
-      ],
-    });
+  async getProductsByStore(storeId) {
+    return await productRepository.findAllProducts({ storeId });
   }
 
   async getProductById(id) {
-    const product = await Product.findOne({
-      $or: [{ productId: id }, { sku: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
-      bit_IsActive: true,
-    });
+    const product = await productRepository.findProductById(id);
+    if (!product) {
+      throw new Error(`Product '${id}' not found.`);
+    }
     return product;
   }
 
   async createProduct(data, user = null) {
-    const productId = data.productId || `prod-${Date.now()}`;
-    const product = await Product.create({
-      ...data,
-      productId,
-      originalPrice: data.originalPrice || data.price,
-      txt_Created_By: user?.name || 'system',
-    });
+    let categoryId = data.categoryId;
+    if (!categoryId && data.category) {
+      const cat = await categoryRepository.findByName(data.category);
+      if (cat) categoryId = cat.int_Category_Id;
+    }
 
-    // Also ensure corresponding Inventory document exists
-    await Inventory.create({
-      inventoryId: `inv-${productId}`,
-      productId: product.productId,
-      productName: product.name,
-      sku: product.sku,
-      category: product.category,
-      image: product.image,
-      store: product.store,
-      storeId: product.storeId,
-      currentStock: product.stock,
-      minStock: product.reorderLevel,
-      maxStock: product.stock * 3 || 100,
-      dailyVelocity: product.dailyVelocity,
-      supplier: product.supplier,
-      supplierId: product.supplierId,
-      status: product.stockStatus,
-    });
+    const newProd = await productRepository.createProduct(
+      {
+        txt_Product_Name: data.name,
+        txt_Product_Code: data.code || `PROD-${Date.now().toString().slice(-4)}`,
+        txt_Generic_Name: data.description || data.genericName || '',
+        txt_SKU: data.sku || `SKU-${Date.now()}`,
+        txt_Barcode: data.barcode || '',
+        int_Category_Id: categoryId || 1,
+        int_Brand_Id: data.brandId || 1,
+        int_Unit_Id: data.unitId || 1,
+        int_Tax_Id: data.taxId || 1,
+        dec_Cost_Price: Number(data.costPrice || data.price * 0.7 || 0),
+        dec_Selling_Price: Number(data.price || data.sellingPrice || 0),
+        dec_MRP: Number(data.mrp || data.originalPrice || data.price || 0),
+        dec_Discount_Percentage: Number(data.discount || data.discountPct || 0),
+        int_Reorder_Level: Number(data.reorderLevel || 10),
+        int_Reorder_Quantity: Number(data.reorderQuantity || 20),
+        int_Minimum_Stock_Level: Number(data.minStock || 5),
+        txt_Product_Image_URL: data.image || null,
+        bit_Is_Perishable: data.isPerishable ? 1 : 0,
+        int_Shelf_Life_Days: data.shelfLifeDays || 30,
+      },
+      user?.name || 'system'
+    );
 
-    return product;
+    return await productRepository.findProductById(newProd.int_Product_Id);
   }
 
   async updateProduct(id, data, user = null) {
-    const product = await Product.findOneAndUpdate(
+    const existing = await productRepository.findProductById(id);
+    if (!existing) {
+      throw new Error(`Product '${id}' not found.`);
+    }
+
+    const updated = await productRepository.updateProduct(
+      existing.id,
       {
-        $or: [{ productId: id }, { sku: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
+        txt_Product_Name: data.name,
+        txt_Generic_Name: data.description || data.genericName,
+        dec_Selling_Price: data.price !== undefined ? Number(data.price) : undefined,
+        dec_MRP: data.originalPrice !== undefined ? Number(data.originalPrice) : undefined,
+        dec_Cost_Price: data.costPrice !== undefined ? Number(data.costPrice) : undefined,
+        dec_Discount_Percentage: data.discount !== undefined ? Number(data.discount) : undefined,
+        int_Reorder_Level: data.reorderLevel !== undefined ? Number(data.reorderLevel) : undefined,
+        txt_Product_Image_URL: data.image,
       },
-      {
-        ...data,
-        txt_Modified_By: user?.name || 'system',
-        dte_Modified_Date: new Date(),
-      },
-      { new: true, runValidators: true }
+      user?.name || 'system'
     );
 
-    if (!product) {
-      throw new Error(`Product with ID '${id}' not found.`);
-    }
-
-    // Keep Inventory in sync
-    if (data.stock !== undefined || data.price !== undefined || data.reorderLevel !== undefined) {
-      await Inventory.findOneAndUpdate(
-        { productId: product.productId },
-        {
-          currentStock: product.stock,
-          minStock: product.reorderLevel,
-          status: product.stockStatus,
-        }
-      );
-    }
-
-    return product;
+    return updated;
   }
 
   async deleteProduct(id, user = null) {
-    const product = await Product.findOneAndUpdate(
-      {
-        $or: [{ productId: id }, { sku: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
-      },
-      {
-        bit_IsActive: false,
-        txt_Modified_By: user?.name || 'system',
-        dte_Modified_Date: new Date(),
-      },
-      { new: true }
-    );
-
-    if (!product) {
-      throw new Error(`Product with ID '${id}' not found.`);
+    const existing = await productRepository.findProductById(id);
+    if (!existing) {
+      throw new Error(`Product '${id}' not found.`);
     }
-
-    return { message: 'Product deleted successfully.' };
+    return await productRepository.softDelete(existing.id, user?.name || 'system');
   }
 
-  async updateProductDiscount(productId, discountPct, user = null) {
-    const numPct = Number(discountPct);
-    const product = await this.getProductById(productId);
-    if (!product) {
-      throw new Error(`Product with ID '${productId}' not found.`);
+  async updateDiscount(id, discountPct, user = null) {
+    const existing = await productRepository.findProductById(id);
+    if (!existing) {
+      throw new Error(`Product '${id}' not found.`);
     }
-
-    const newPrice = Math.round(product.originalPrice * (1 - numPct / 100));
-    product.discountPct = numPct;
-    product.price = newPrice;
-    product.txt_Modified_By = user?.name || 'system';
-    product.dte_Modified_Date = new Date();
-
-    await product.save();
-    return product;
+    await productRepository.updateDiscount(existing.id, discountPct, user?.name || 'system');
+    return await productRepository.findProductById(existing.id);
   }
 }
 

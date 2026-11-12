@@ -1,5 +1,5 @@
-const Customer = require('../models/Customer');
-const Order = require('../models/Order');
+const db = require('../config/db');
+const customerRepository = require('../repositories/customerRepository');
 
 class CustomerAnalyticsService {
   /**
@@ -58,61 +58,59 @@ class CustomerAnalyticsService {
    * Feature engineering calculating real Recency, Frequency, and Monetary parameters from orders
    */
   async getCustomerRFM(storeId = null) {
-    const orderMatch = {
-      bit_IsActive: true,
-      status: { $in: ['Completed', 'Delivered'] },
-    };
+    let orderConditions = "o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')";
+    const params = [];
 
     if (storeId && storeId !== 'All' && storeId !== 'all') {
-      orderMatch.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
+      orderConditions += ' AND o.int_Store_Id = ?';
+      params.push(storeId);
     }
 
-    // 1. Aggregate real order history per customer
-    const orderRFMAgg = await Order.aggregate([
-      { $match: orderMatch },
-      {
-        $group: {
-          _id: '$customerId',
-          customerName: { $first: '$customerName' },
-          totalSpent: { $sum: '$totalAmount' },
-          totalOrders: { $sum: 1 },
-          lastPurchaseDate: { $max: '$createdAt' },
-          firstPurchaseDate: { $min: '$createdAt' },
-          paymentMethodsUsed: { $addToSet: '$paymentMethod' },
-        },
-      },
-    ]);
+    const orderAggSql = `
+      SELECT 
+        o.int_Customer_Id AS customerId,
+        CONCAT(c.txt_First_Name, ' ', COALESCE(c.txt_Last_Name, '')) AS customerName,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS totalSpent,
+        COUNT(o.int_Order_Id) AS totalOrders,
+        MAX(o.dte_Created_Date) AS lastPurchaseDate,
+        MIN(o.dte_Created_Date) AS firstPurchaseDate
+      FROM tbl_Order o
+      LEFT JOIN tbl_Customer c ON o.int_Customer_Id = c.int_Customer_Id
+      WHERE ${orderConditions}
+      GROUP BY o.int_Customer_Id, c.txt_First_Name, c.txt_Last_Name
+    `;
 
-    // 2. Fetch customer collection profiles to match
-    const customerProfiles = await Customer.find({ bit_IsActive: true });
+    const orderRFMAgg = await db.query(orderAggSql, params);
+
+    // 2. Fetch all registered customer profiles
+    const customerProfiles = await customerRepository.getAll({ bit_IsActive: true });
     const profileMap = new Map();
     customerProfiles.forEach((c) => {
-      profileMap.set(c.customerId, c);
+      profileMap.set(String(c.customerId), c);
       if (c.email) profileMap.set(c.email, c);
     });
 
     const now = Date.now();
     const rfmResults = [];
-
-    // Process customers with order history
     const processedCustomerIds = new Set();
 
+    // Process customers with order history
     for (const agg of orderRFMAgg) {
-      const custId = agg._id || 'cust-001';
+      const custId = String(agg.customerId || '1');
       processedCustomerIds.add(custId);
 
       const profile = profileMap.get(custId) || {};
       const lastDate = agg.lastPurchaseDate ? new Date(agg.lastPurchaseDate) : new Date();
       const recencyDays = Math.max(0, Math.floor((now - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const frequency = agg.totalOrders || 1;
-      const monetary = agg.totalSpent || 0;
+      const frequency = Number(agg.totalOrders) || 1;
+      const monetary = Number(agg.totalSpent) || 0;
       const aov = frequency > 0 ? Math.round(monetary / frequency) : monetary;
 
       const rScore = this.scoreRecency(recencyDays);
       const fScore = this.scoreFrequency(frequency);
       const mScore = this.scoreMonetary(monetary);
       const rfmScore = `${rScore}${fScore}${mScore}`;
-      const segment = profile.segment || this.suggestSegment(rScore, fScore, mScore);
+      const segment = profile.customerType || profile.segment || this.suggestSegment(rScore, fScore, mScore);
 
       rfmResults.push({
         customerId: custId,
@@ -120,8 +118,8 @@ class CustomerAnalyticsService {
         email: profile.email || `${custId}@customer.retailmind.ai`,
         phone: profile.phone || '+91 98000 00000',
         avatar: profile.avatar || null,
-        preferredStore: profile.preferredStore || 'Indiranagar Flagship (Store 01)',
-        storeId: profile.storeId || storeId || 'store-01',
+        preferredStore: profile.preferredStore || 'Indiranagar Flagship',
+        storeId: String(profile.storeId || storeId || '1'),
         recency: recencyDays,
         recencyDays,
         frequency,
@@ -135,39 +133,40 @@ class CustomerAnalyticsService {
         monetaryScore: mScore,
         rfmScore,
         segment,
-        smartCoins: profile.smartCoins || Math.round(monetary * 0.01),
+        smartCoins: profile.loyaltyPoints || profile.smartCoins || Math.round(monetary * 0.01),
       });
     }
 
     // Add customers from database who may not have orders in current filter yet
     for (const profile of customerProfiles) {
-      if (!processedCustomerIds.has(profile.customerId)) {
+      const custIdStr = String(profile.customerId);
+      if (!processedCustomerIds.has(custIdStr)) {
         const rScore = this.scoreRecency(profile.recencyDays || 30);
-        const fScore = this.scoreFrequency(profile.orders || profile.frequency || 1);
-        const mScore = this.scoreMonetary(profile.totalSpent || profile.monetary || 1000);
+        const fScore = this.scoreFrequency(profile.orders || profile.totalOrders || 1);
+        const mScore = this.scoreMonetary(profile.totalSpent || 1000);
 
         rfmResults.push({
-          customerId: profile.customerId,
+          customerId: custIdStr,
           name: profile.name,
           email: profile.email,
           phone: profile.phone,
-          avatar: profile.avatar,
-          preferredStore: profile.preferredStore,
-          storeId: profile.storeId || 'store-01',
+          avatar: profile.avatar || null,
+          preferredStore: profile.preferredStore || 'Indiranagar Flagship',
+          storeId: String(profile.storeId || '1'),
           recency: profile.recencyDays || 30,
           recencyDays: profile.recencyDays || 30,
-          frequency: profile.orders || profile.frequency || 1,
-          totalOrders: profile.orders || profile.frequency || 1,
-          monetary: profile.totalSpent || profile.monetary || 1000,
-          totalSpent: profile.totalSpent || profile.monetary || 1000,
-          aov: profile.aov || 1000,
+          frequency: profile.orders || profile.totalOrders || 1,
+          totalOrders: profile.orders || profile.totalOrders || 1,
+          monetary: profile.totalSpent || 1000,
+          totalSpent: profile.totalSpent || 1000,
+          aov: profile.aov || (profile.totalSpent ? Math.round(profile.totalSpent / (profile.totalOrders || 1)) : 1000),
           lastPurchaseDate: profile.lastPurchase || '2026-08-01',
           recencyScore: rScore,
           frequencyScore: fScore,
           monetaryScore: mScore,
           rfmScore: `${rScore}${fScore}${mScore}`,
-          segment: profile.segment || 'Growing',
-          smartCoins: profile.smartCoins || 100,
+          segment: profile.customerType || profile.segment || 'Growing Regulars',
+          smartCoins: profile.loyaltyPoints || profile.smartCoins || 100,
         });
       }
     }
@@ -215,3 +214,4 @@ class CustomerAnalyticsService {
 }
 
 module.exports = new CustomerAnalyticsService();
+

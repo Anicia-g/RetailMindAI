@@ -1,6 +1,6 @@
 const { verifyToken } = require('../utils/jwt');
 const { errorResponse } = require('../utils/apiResponse');
-const User = require('../models/User');
+const userRepository = require('../repositories/userRepository');
 
 const protect = async (req, res, next) => {
   let token;
@@ -23,7 +23,8 @@ const protect = async (req, res, next) => {
 
     // Attach basic claims from token immediately
     req.user = {
-      id: decoded.id || decoded.sub,
+      id: String(decoded.id || decoded.sub),
+      userId: decoded.userId || (parseInt(decoded.id, 10) || null),
       email: decoded.email,
       name: decoded.name,
       role: decoded.role,
@@ -32,21 +33,26 @@ const protect = async (req, res, next) => {
       permissions: decoded.permissions || [],
     };
 
-    // Optionally check if user exists and is active in DB
+    // Verify user in MySQL DB if valid numeric ID
     try {
-      const userInDb = await User.findById(decoded.id).select('-passwordHash');
+      const userInDb = await userRepository.findById(decoded.id);
       if (userInDb) {
-        if (!userInDb.bit_IsActive) {
+        if (!userRepository.toBoolean(userInDb.bit_IsActive)) {
           return errorResponse(res, 'User account is deactivated.', 403);
         }
+        if (userRepository.toBoolean(userInDb.bit_Is_Locked)) {
+          return errorResponse(res, 'User account is locked due to security policy.', 403);
+        }
+        const userDTO = userRepository.toDTO(userInDb);
         req.user = {
           ...req.user,
-          ...userInDb.toJSON(),
-          id: userInDb._id.toString(),
+          ...userDTO,
+          id: String(userInDb.int_User_Id),
+          userId: userInDb.int_User_Id,
         };
       }
     } catch (dbErr) {
-      // If DB is temporarily querying or ID was mock, keep the valid verified JWT payload
+      // Keep verified JWT claims if transient query error
     }
 
     next();

@@ -1,4 +1,4 @@
-const Product = require('../models/Product');
+const productRepository = require('../repositories/productRepository');
 
 class DecisionTreeDiscountService {
   /**
@@ -6,21 +6,22 @@ class DecisionTreeDiscountService {
    * to determine dynamic promotional markdown recommendation (0%, 5%, 10%, 15%, 20%).
    */
   async recommendDiscount(productId, preferredAlgorithm = 'C4.5') {
-    const product = await Product.findOne({
-      $or: [{ productId }, { sku: productId }, { _id: productId.match(/^[0-9a-fA-F]{24}$/) ? productId : null }],
-      bit_IsActive: true,
-    });
+    let product = await productRepository.getById(productId);
+    if (!product) {
+      const bySku = await productRepository.getAll({ txt_Product_Code: productId });
+      product = bySku[0];
+    }
 
     if (!product) {
       throw new Error(`Product '${productId}' not found.`);
     }
 
-    const stock = product.stock || 0;
-    const reorderLevel = product.reorderLevel || 20;
-    const velocity = product.dailyVelocity || 5;
-    const expiryDays = product.expiryDays || 30;
+    const stock = Number(product.stock) || 0;
+    const reorderLevel = Number(product.reorderLevel) || 20;
+    const velocity = Number(product.dailyVelocity) || 5;
+    const expiryDays = Number(product.expiryDays) || 30;
     const velocityChange = product.velocityChange || '+0%';
-    const isVelocityDeclining = velocityChange.startsWith('-');
+    const isVelocityDeclining = String(velocityChange).startsWith('-');
 
     const isHighStock = stock > reorderLevel;
     const isCriticalLow = stock <= reorderLevel / 2;
@@ -101,16 +102,16 @@ class DecisionTreeDiscountService {
     ];
 
     return {
-      productId: product.productId,
+      productId: String(product.productId),
       productName: product.name,
       currentPrice: product.price,
-      originalPrice: product.originalPrice,
+      originalPrice: product.originalPrice || product.price,
       stock,
       dailyVelocity: velocity,
       velocityChange,
       expiryDays,
-      demandLevel: product.demandLevel,
-      inventoryLevel: product.inventoryLevel,
+      demandLevel: product.demandLevel || 'High',
+      inventoryLevel: product.inventoryLevel || 'Adequate',
       recommendedDiscount,
       confidence: confidence / 100,
       modelUsed,
@@ -124,3 +125,4 @@ class DecisionTreeDiscountService {
 }
 
 module.exports = new DecisionTreeDiscountService();
+

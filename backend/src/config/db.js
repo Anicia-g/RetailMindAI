@@ -1,51 +1,89 @@
-const mongoose = require('mongoose');
-const config = require('./env');
+require('./env');
+const mysql = require('mysql2/promise');
 
-let isConnected = false;
-let mongoMemoryServer = null;
+const isSsl = process.env.MYSQL_SSL === 'true' || process.env.DB_SSL === 'true';
 
+const poolConfig = {
+  host: process.env.MYSQL_HOST || process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.MYSQL_PORT || process.env.DB_PORT || '3306', 10),
+  user: process.env.MYSQL_USER || process.env.DB_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || process.env.DB_NAME || 'retailmind_ai',
+  waitForConnections: true,
+  connectionLimit: 15,
+  queueLimit: 0,
+  decimalNumbers: true,
+  dateStrings: false,
+};
+
+if (isSsl) {
+  poolConfig.ssl = {
+    rejectUnauthorized: false,
+  };
+}
+
+const pool = mysql.createPool(poolConfig);
+
+/**
+ * Validates active connection on backend startup
+ */
 const connectDB = async () => {
-  if (isConnected && mongoose.connection.readyState === 1) {
-    return mongoose.connection;
-  }
-
   try {
-    const conn = await mongoose.connect(config.mongodbUri, {
-      serverSelectionTimeoutMS: 2000,
-      autoIndex: true,
-    });
-
-    isConnected = !!conn.connections[0].readyState;
-    console.log(`[Database] MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
-    return conn;
+    const connection = await pool.getConnection();
+    console.log('====================================================');
+    console.log('✅ MySQL connected successfully via mysql2/promise');
+    console.log(`📦 Database: ${process.env.MYSQL_DATABASE || 'retailmind_ai'}`);
+    console.log(`🏠 Host: ${process.env.MYSQL_HOST || 'localhost'}:${process.env.MYSQL_PORT || '3306'}`);
+    console.log('====================================================');
+    connection.release();
   } catch (error) {
-    console.warn(`[Database Notice] Standard MongoDB connection to ${config.mongodbUri} was unreachable (${error.message}).`);
-    console.log('[Database] Initiating Embedded In-Memory MongoDB Server for local execution...');
-
-    try {
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      mongoMemoryServer = await MongoMemoryServer.create({
-        instance: { dbName: 'retailmind_ai' },
-      });
-      const uri = mongoMemoryServer.getUri();
-      const memConn = await mongoose.connect(uri, { autoIndex: true });
-      isConnected = true;
-      console.log(`[Database] ✅ Embedded MongoDB Server Online at ${uri}`);
-      return memConn;
-    } catch (memErr) {
-      console.error('[Database Error] Failed to start In-Memory MongoDB Server:', memErr.message);
-      throw error;
-    }
+    console.error('❌ MySQL connection failed:', error.message);
+    throw error;
   }
 };
 
-mongoose.connection.on('disconnected', () => {
-  isConnected = false;
-  console.warn('[Database] MongoDB connection disconnected');
-});
+/**
+ * Execute parameterized query using pool
+ */
+const query = async (sql, params = []) => {
+  const [rows, fields] = await pool.query(sql, params);
+  return rows;
+};
 
-mongoose.connection.on('error', (err) => {
-  console.error('[Database] MongoDB connection error:', err.message);
-});
+/**
+ * Execute parameterized statement using pool
+ */
+const execute = async (sql, params = []) => {
+  const [result] = await pool.execute(sql, params);
+  return result;
+};
 
-module.exports = { connectDB, mongoose };
+/**
+ * Executes an operation inside an ACID database transaction.
+ * Automatically manages beginTransaction, commit, rollback, and connection release.
+ *
+ * @param {Function} callback - Async function receiving (connection)
+ * @returns {Promise<any>} Result of the callback
+ */
+const withTransaction = async (callback) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const result = await callback(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+module.exports = {
+  pool,
+  connectDB,
+  query,
+  execute,
+  withTransaction,
+};

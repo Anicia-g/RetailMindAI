@@ -1,124 +1,102 @@
-const Order = require('../models/Order');
-const Product = require('../models/Product');
-const Store = require('../models/Store');
-const Payment = require('../models/Payment');
+const { query } = require('../config/db');
 const { parseDateRange, calculateGrowthPercentage, formatGrowthString } = require('../utils/dateUtils');
+const productRepository = require('../repositories/productRepository');
 
 class SalesAnalyticsService {
   /**
-   * Match stage helper for completed sales within a date range and optional store
+   * Helper to build SQL WHERE conditions for completed sales
    */
-  getCompletedSalesMatch(startDate, endDate, storeId = null) {
-    const match = {
-      bit_IsActive: true,
-      status: { $in: ['Completed', 'Delivered'] },
-    };
+  buildCompletedSalesWhere(startDate, endDate, storeId = null) {
+    let where = `WHERE o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')`;
+    const params = [];
 
     if (startDate && endDate) {
-      match.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
+      where += ` AND o.dte_Order_Date >= ? AND o.dte_Order_Date <= ?`;
+      params.push(startDate, endDate);
     }
 
     if (storeId && storeId !== 'All' && storeId !== 'all') {
-      match.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
+      const storeNum = parseInt(String(storeId).replace(/\D/g, ''), 10);
+      if (!isNaN(storeNum)) {
+        where += ` AND o.int_Store_Id = ?`;
+        params.push(storeNum);
+      }
     }
 
-    return match;
+    return { where, params };
   }
 
   /**
    * GET /api/analytics/revenue
    * High-accuracy period comparison and revenue breakdown
    */
-  async getRevenueAnalytics(query = {}) {
+  async getRevenueAnalytics(queryParams = {}) {
     const { startDate, endDate, prevStartDate, prevEndDate, diffDays } = parseDateRange(
-      query.range,
-      query.startDate,
-      query.endDate
+      queryParams.range,
+      queryParams.startDate,
+      queryParams.endDate
     );
-    const storeId = query.storeId || null;
+    const storeId = queryParams.storeId || null;
 
-    // 1. Current period revenue
-    const currentMatch = this.getCompletedSalesMatch(startDate, endDate, storeId);
-    const [currentMetrics] = await Order.aggregate([
-      { $match: currentMatch },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
-          totalOrders: { $sum: 1 },
-          subtotal: { $sum: '$subtotal' },
-          totalDiscount: { $sum: '$discount' },
-          totalTax: { $sum: '$tax' },
-        },
-      },
-    ]);
+    // 1. Current period metrics
+    const current = this.buildCompletedSalesWhere(startDate, endDate, storeId);
+    const currentSql = `
+      SELECT 
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS totalRevenue,
+        COUNT(o.int_Order_Id) AS totalOrders,
+        COALESCE(SUM(o.dec_Subtotal_Amount), 0) AS subtotal,
+        COALESCE(SUM(o.dec_Discount_Amount), 0) AS totalDiscount,
+        COALESCE(SUM(o.dec_Tax_Amount), 0) AS totalTax
+      FROM tbl_Order o
+      ${current.where}
+    `;
+    const [currentMetrics] = await query(currentSql, current.params);
 
-    // 2. Previous period revenue
-    const prevMatch = this.getCompletedSalesMatch(prevStartDate, prevEndDate, storeId);
-    const [prevMetrics] = await Order.aggregate([
-      { $match: prevMatch },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
-          totalOrders: { $sum: 1 },
-        },
-      },
-    ]);
+    // 2. Previous period metrics
+    const prev = this.buildCompletedSalesWhere(prevStartDate, prevEndDate, storeId);
+    const prevSql = `
+      SELECT 
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS totalRevenue,
+        COUNT(o.int_Order_Id) AS totalOrders
+      FROM tbl_Order o
+      ${prev.where}
+    `;
+    const [prevMetrics] = await query(prevSql, prev.params);
 
-    const totalRevenue = currentMetrics?.totalRevenue || 0;
-    const totalOrders = currentMetrics?.totalOrders || 0;
-    const previousPeriodRevenue = prevMetrics?.totalRevenue || 0;
-    const previousPeriodOrders = prevMetrics?.totalOrders || 0;
+    const totalRevenue = Number(currentMetrics?.totalRevenue || 0);
+    const totalOrders = Number(currentMetrics?.totalOrders || 0);
+    const previousPeriodRevenue = Number(prevMetrics?.totalRevenue || 0);
+    const previousPeriodOrders = Number(prevMetrics?.totalOrders || 0);
 
     const growthPercentage = calculateGrowthPercentage(totalRevenue, previousPeriodRevenue);
     const orderGrowthPercentage = calculateGrowthPercentage(totalOrders, previousPeriodOrders);
     const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
 
     // 3. Daily revenue breakdown
-    const dailyRevenue = await Order.aggregate([
-      { $match: currentMatch },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          revenue: { $sum: '$totalAmount' },
-          orders: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-      {
-        $project: {
-          _id: 0,
-          date: '$_id',
-          revenue: '$revenue',
-          orders: '$orders',
-        },
-      },
-    ]);
+    const dailySql = `
+      SELECT 
+        DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d') AS date,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS revenue,
+        COUNT(o.int_Order_Id) AS orders
+      FROM tbl_Order o
+      ${current.where}
+      GROUP BY DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d')
+      ORDER BY date ASC
+    `;
+    const dailyRevenue = await query(dailySql, current.params);
 
     // 4. Monthly revenue breakdown
-    const monthlyRevenue = await Order.aggregate([
-      { $match: { bit_IsActive: true, status: { $in: ['Completed', 'Delivered'] } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-          revenue: { $sum: '$totalAmount' },
-          orders: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-      {
-        $project: {
-          _id: 0,
-          month: '$_id',
-          revenue: '$revenue',
-          orders: '$orders',
-        },
-      },
-    ]);
+    const monthlySql = `
+      SELECT 
+        DATE_FORMAT(o.dte_Order_Date, '%Y-%m') AS month,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS revenue,
+        COUNT(o.int_Order_Id) AS orders
+      FROM tbl_Order o
+      WHERE o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')
+      GROUP BY DATE_FORMAT(o.dte_Order_Date, '%Y-%m')
+      ORDER BY month ASC
+    `;
+    const monthlyRevenue = await query(monthlySql, []);
 
     return {
       period: {
@@ -137,106 +115,83 @@ class SalesAnalyticsService {
       orderGrowthPercentage,
       orderGrowthFormatted: formatGrowthString(orderGrowthPercentage),
       averageOrderValue,
-      dailyRevenue,
-      monthlyRevenue,
+      dailyRevenue: dailyRevenue.map((d) => ({ date: d.date, revenue: Number(d.revenue), orders: Number(d.orders) })),
+      monthlyRevenue: monthlyRevenue.map((m) => ({ month: m.month, revenue: Number(m.revenue), orders: Number(m.orders) })),
     };
   }
 
   /**
    * GET /api/analytics/sales
-   * Consolidated sales volume, trends, top products, categories, payment mix
+   * Consolidated sales volume, trends, top products
    */
-  async getSalesAnalytics(query = {}) {
-    const { startDate, endDate } = parseDateRange(query.range, query.startDate, query.endDate);
-    const storeId = query.storeId || null;
-    const match = this.getCompletedSalesMatch(startDate, endDate, storeId);
+  async getSalesAnalytics(queryParams = {}) {
+    const { startDate, endDate } = parseDateRange(queryParams.range, queryParams.startDate, queryParams.endDate);
+    const storeId = queryParams.storeId || null;
+    const { where, params } = this.buildCompletedSalesWhere(startDate, endDate, storeId);
 
-    // 1. Core KPIs & Units Sold
-    const [salesKpi] = await Order.aggregate([
-      { $match: match },
-      { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
-      {
-        $group: {
-          _id: '$_id',
-          totalAmount: { $first: '$totalAmount' },
-          unitsInOrder: { $sum: '$items.qty' },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: '$totalAmount' },
-          totalOrders: { $sum: 1 },
-          unitsSold: { $sum: '$unitsInOrder' },
-        },
-      },
-    ]);
+    // Sales KPI
+    const kpiSql = `
+      SELECT 
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS totalSales,
+        COUNT(DISTINCT o.int_Order_Id) AS totalOrders,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold
+      FROM tbl_Order o
+      LEFT JOIN tbl_Order_Item oi ON o.int_Order_Id = oi.int_Order_Id AND oi.bit_IsActive = 1
+      ${where}
+    `;
+    const [salesKpi] = await query(kpiSql, params);
 
-    const totalSales = salesKpi?.totalSales || 0;
-    const totalOrders = salesKpi?.totalOrders || 0;
-    const unitsSold = salesKpi?.unitsSold || 0;
+    const totalSales = Number(salesKpi?.totalSales || 0);
+    const totalOrders = Number(salesKpi?.totalOrders || 0);
+    const unitsSold = Number(salesKpi?.unitsSold || 0);
     const averageOrderValue = totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0;
 
-    // 2. Sales Trend (Daily)
-    const salesTrend = await Order.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          revenue: { $sum: '$totalAmount' },
-          orders: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-      {
-        $project: {
-          _id: 0,
-          date: '$_id',
-          revenue: '$revenue',
-          orders: '$orders',
-        },
-      },
-    ]);
+    // Sales Trend
+    const trendSql = `
+      SELECT 
+        DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d') AS date,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS revenue,
+        COUNT(DISTINCT o.int_Order_Id) AS orders
+      FROM tbl_Order o
+      ${where}
+      GROUP BY DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d')
+      ORDER BY date ASC
+    `;
+    const trendRows = await query(trendSql, params);
+    const salesTrend = trendRows.map((r) => ({
+      date: r.date,
+      revenue: Number(r.revenue),
+      orders: Number(r.orders),
+    }));
 
-    // 3. Top Products by sales volume & revenue
-    const topProducts = await Order.aggregate([
-      { $match: match },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.productId',
-          name: { $first: '$items.name' },
-          sku: { $first: '$items.sku' },
-          image: { $first: '$items.image' },
-          unitsSold: { $sum: '$items.qty' },
-          revenue: { $sum: '$items.total' },
-          orderCount: { $sum: 1 },
-        },
-      },
-      { $sort: { revenue: -1 } },
-      { $limit: 10 },
-      {
-        $project: {
-          _id: 0,
-          productId: '$_id',
-          name: 1,
-          sku: 1,
-          image: 1,
-          unitsSold: 1,
-          revenue: 1,
-          orderCount: 1,
-        },
-      },
-    ]);
-
-    // 4. Category Performance
-    const topCategories = await this.getCategoryAnalytics(query);
-
-    // 5. Store Performance
-    const storePerformance = await this.getStoreAnalytics(query);
-
-    // 6. Payment Distribution
-    const paymentDistribution = await this.getPaymentAnalytics(query);
+    // Top Products
+    const topProdSql = `
+      SELECT 
+        p.int_Product_Id AS productId,
+        p.txt_Product_Name AS name,
+        p.txt_SKU AS sku,
+        p.txt_Product_Image_URL AS image,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold,
+        COALESCE(SUM(oi.dec_Line_Total), 0) AS revenue,
+        COUNT(DISTINCT o.int_Order_Id) AS orderCount
+      FROM tbl_Order_Item oi
+      JOIN tbl_Order o ON oi.int_Order_Id = o.int_Order_Id
+      JOIN tbl_Product p ON oi.int_Product_Id = p.int_Product_Id
+      ${where}
+      GROUP BY p.int_Product_Id, p.txt_Product_Name, p.txt_SKU, p.txt_Product_Image_URL
+      ORDER BY revenue DESC
+      LIMIT 10
+    `;
+    const topProductsRows = await query(topProdSql, params);
+    const topProducts = topProductsRows.map((p) => ({
+      productId: `prod-${String(p.productId).padStart(3, '0')}`,
+      name: p.name,
+      sku: p.sku,
+      image: p.image || '',
+      unitsSold: Number(p.unitsSold),
+      revenue: Number(p.revenue),
+      orderCount: Number(p.orderCount),
+    }));
 
     return {
       kpis: {
@@ -245,223 +200,177 @@ class SalesAnalyticsService {
         unitsSold,
         averageOrderValue,
       },
-      totalSales,
-      totalOrders,
-      unitsSold,
-      averageOrderValue,
       salesTrend,
       topProducts,
-      topCategories,
-      storePerformance,
-      paymentDistribution,
     };
   }
 
   /**
    * GET /api/analytics/categories
    */
-  async getCategoryAnalytics(query = {}) {
-    const { startDate, endDate } = parseDateRange(query.range, query.startDate, query.endDate);
-    const storeId = query.storeId || null;
-    const match = this.getCompletedSalesMatch(startDate, endDate, storeId);
+  async getCategoryAnalytics(queryParams = {}) {
+    const { startDate, endDate } = parseDateRange(queryParams.range, queryParams.startDate, queryParams.endDate);
+    const storeId = queryParams.storeId || null;
+    const { where, params } = this.buildCompletedSalesWhere(startDate, endDate, storeId);
 
-    // Aggregate category revenue from orders and product categories
-    const categoriesAgg = await Order.aggregate([
-      { $match: match },
-      { $unwind: '$items' },
-      {
-        $lookup: {
-          from: 'products',
-          localField: 'items.productId',
-          foreignField: 'productId',
-          as: 'productDoc',
-        },
-      },
-      {
-        $addFields: {
-          category: {
-            $ifNull: [{ $arrayElemAt: ['$productDoc.category', 0] }, 'General Grocery'],
-          },
-        },
-      },
-      {
-        $group: {
-          _id: '$category',
-          revenue: { $sum: '$items.total' },
-          unitsSold: { $sum: '$items.qty' },
-          orderCount: { $sum: 1 },
-        },
-      },
-      { $sort: { revenue: -1 } },
-    ]);
+    const sql = `
+      SELECT 
+        c.txt_Category_Name AS category,
+        COALESCE(SUM(oi.dec_Line_Total), 0) AS revenue,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold,
+        COUNT(DISTINCT o.int_Order_Id) AS orderCount
+      FROM tbl_Order_Item oi
+      JOIN tbl_Order o ON oi.int_Order_Id = o.int_Order_Id
+      JOIN tbl_Product p ON oi.int_Product_Id = p.int_Product_Id
+      JOIN tbl_Category c ON p.int_Category_Id = c.int_Category_Id
+      ${where}
+      GROUP BY c.txt_Category_Name
+      ORDER BY revenue DESC
+    `;
+    const rows = await query(sql, params);
+    const totalRev = rows.reduce((acc, r) => acc + Number(r.revenue), 0);
 
-    const totalCategoryRevenue = categoriesAgg.reduce((acc, c) => acc + c.revenue, 0) || 1;
-
-    return categoriesAgg.map((c) => ({
-      category: c._id,
-      revenue: c.revenue,
-      unitsSold: c.unitsSold,
-      orderCount: c.orderCount,
-      percentageOfSales: Number(((c.revenue / totalCategoryRevenue) * 100).toFixed(1)),
-      share: Number(((c.revenue / totalCategoryRevenue) * 100).toFixed(1)),
+    return rows.map((r) => ({
+      category: r.category,
+      revenue: Number(r.revenue),
+      unitsSold: Number(r.unitsSold),
+      orderCount: Number(r.orderCount),
+      percentageOfTotal: totalRev > 0 ? Number(((Number(r.revenue) / totalRev) * 100).toFixed(1)) : 0,
     }));
   }
 
   /**
    * GET /api/analytics/stores
    */
-  async getStoreAnalytics(query = {}) {
-    const { startDate, endDate } = parseDateRange(query.range, query.startDate, query.endDate);
-    const match = this.getCompletedSalesMatch(startDate, endDate);
+  async getStoreAnalytics(queryParams = {}) {
+    const { startDate, endDate } = parseDateRange(queryParams.range, queryParams.startDate, queryParams.endDate);
+    const { where, params } = this.buildCompletedSalesWhere(startDate, endDate);
 
-    const storeSalesAgg = await Order.aggregate([
-      { $match: match },
-      { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
-      {
-        $group: {
-          _id: {
-            storeId: '$storeId',
-            store: '$store',
-          },
-          revenue: { $sum: '$totalAmount' },
-          orderCount: { $addToSet: '$_id' },
-          unitsSold: { $sum: '$items.qty' },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          storeId: '$_id.storeId',
-          store: '$_id.store',
-          revenue: '$revenue',
-          orders: { $size: '$orderCount' },
-          unitsSold: '$unitsSold',
-          averageOrderValue: {
-            $cond: [
-              { $gt: [{ $size: '$orderCount' }, 0] },
-              { $round: [{ $divide: ['$revenue', { $size: '$orderCount' }] }, 0] },
-              0,
-            ],
-          },
-        },
-      },
-      { $sort: { revenue: -1 } },
-    ]);
-
-    // Lookup physical stores to supplement missing stores or inventory values
-    const allStores = await Store.find({ bit_IsActive: true });
-    const storeMap = new Map();
-    allStores.forEach((s) => {
-      storeMap.set(s.storeId || s.code, s);
-    });
-
-    return storeSalesAgg.map((item) => {
-      const storeObj = storeMap.get(item.storeId) || {};
-      return {
-        ...item,
-        city: storeObj.city || 'Bangalore',
-        health: storeObj.inventoryHealth || 'Healthy',
-      };
-    });
+    const sql = `
+      SELECT 
+        s.int_Store_Id AS storeId,
+        s.txt_Store_Name AS store,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS revenue,
+        COUNT(DISTINCT o.int_Order_Id) AS orders,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold,
+        CASE WHEN COUNT(DISTINCT o.int_Order_Id) > 0 THEN ROUND(SUM(o.dec_Total_Amount)/COUNT(DISTINCT o.int_Order_Id), 0) ELSE 0 END AS averageOrderValue
+      FROM tbl_Store s
+      LEFT JOIN tbl_Order o ON s.int_Store_Id = o.int_Store_Id AND o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')
+      LEFT JOIN tbl_Order_Item oi ON o.int_Order_Id = oi.int_Order_Id AND oi.bit_IsActive = 1
+      GROUP BY s.int_Store_Id, s.txt_Store_Name
+      ORDER BY revenue DESC
+    `;
+    const rows = await query(sql, []);
+    return rows.map((r) => ({
+      storeId: `store-${String(r.storeId).padStart(2, '0')}`,
+      store: r.store,
+      revenue: Number(r.revenue),
+      orders: Number(r.orders),
+      unitsSold: Number(r.unitsSold),
+      averageOrderValue: Number(r.averageOrderValue),
+    }));
   }
 
   /**
    * GET /api/analytics/payments
    */
-  async getPaymentAnalytics(query = {}) {
-    const { startDate, endDate } = parseDateRange(query.range, query.startDate, query.endDate);
-    const storeId = query.storeId || null;
-    const match = this.getCompletedSalesMatch(startDate, endDate, storeId);
+  async getPaymentAnalytics(queryParams = {}) {
+    const { startDate, endDate } = parseDateRange(queryParams.range, queryParams.startDate, queryParams.endDate);
+    const storeId = queryParams.storeId || null;
+    const { where, params } = this.buildCompletedSalesWhere(startDate, endDate, storeId);
 
-    const paymentAgg = await Order.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: { $ifNull: ['$paymentMethod', 'UPI'] },
-          transactionCount: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' },
-        },
-      },
-      { $sort: { totalAmount: -1 } },
-    ]);
+    const sql = `
+      SELECT 
+        COALESCE(pm.txt_Payment_Method_Name, 'UPI') AS method,
+        COUNT(o.int_Order_Id) AS transactionCount,
+        COALESCE(SUM(o.dec_Total_Amount), 0) AS totalAmount
+      FROM tbl_Order o
+      LEFT JOIN tbl_Payment_Method pm ON o.int_Payment_Method_Id = pm.int_Payment_Method_Id
+      ${where}
+      GROUP BY pm.txt_Payment_Method_Name
+      ORDER BY totalAmount DESC
+    `;
+    const rows = await query(sql, params);
+    const grandTotal = rows.reduce((acc, r) => acc + Number(r.totalAmount), 0);
 
-    const totalVolume = paymentAgg.reduce((acc, p) => acc + p.totalAmount, 0) || 1;
-
-    return paymentAgg.map((p) => ({
-      method: p._id,
-      transactionCount: p.transactionCount,
-      totalAmount: p.totalAmount,
-      amount: p.totalAmount,
-      percentage: Number(((p.totalAmount / totalVolume) * 100).toFixed(1)),
+    return rows.map((r) => ({
+      method: r.method,
+      transactionCount: Number(r.transactionCount),
+      totalAmount: Number(r.totalAmount),
+      sharePercentage: grandTotal > 0 ? Number(((Number(r.totalAmount) / grandTotal) * 100).toFixed(1)) : 0,
     }));
   }
 
   /**
    * GET /api/analytics/products/:productId/demand-history
-   * Clean chronological daily demand series for ARIMA / Holt-Winters
    */
-  async getDemandHistory(productId, storeId = null, days = 30) {
-    const { startDate, endDate } = parseDateRange(`${days}d`);
-    const match = {
-      bit_IsActive: true,
-      status: { $in: ['Completed', 'Delivered'] },
-      'items.productId': productId,
-      createdAt: { $gte: startDate, $lte: endDate },
-    };
+  async getDemandHistory(productId, days = 90) {
+    const numericProdMatch = String(productId).match(/\d+/);
+    const prodIdNum = numericProdMatch ? parseInt(numericProdMatch[0], 10) : 1;
 
-    if (storeId && storeId !== 'All') {
-      match.$or = [{ storeId }, { store: new RegExp(storeId, 'i') }];
-    }
+    const sql = `
+      SELECT 
+        DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d') AS date,
+        COALESCE(SUM(oi.int_Quantity), 0) AS unitsSold,
+        COALESCE(SUM(oi.dec_Line_Total), 0) AS revenue,
+        COUNT(DISTINCT o.int_Order_Id) AS orderCount
+      FROM tbl_Order_Item oi
+      JOIN tbl_Order o ON oi.int_Order_Id = o.int_Order_Id
+      WHERE oi.int_Product_Id = ? AND o.bit_IsActive = 1 AND UPPER(o.txt_Order_Status) IN ('COMPLETED', 'DELIVERED')
+      GROUP BY DATE_FORMAT(o.dte_Order_Date, '%Y-%m-%d')
+      ORDER BY date ASC
+    `;
+    const rows = await query(sql, [prodIdNum]);
 
-    const demandAgg = await Order.aggregate([
-      { $match: match },
-      { $unwind: '$items' },
-      { $match: { 'items.productId': productId } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          unitsSold: { $sum: '$items.qty' },
-          revenue: { $sum: '$items.total' },
-          orderCount: { $sum: 1 },
-        },
-      },
-      { $sort: { _id: 1 } },
-      {
-        $project: {
-          _id: 0,
-          date: '$_id',
-          unitsSold: '$unitsSold',
-          revenue: '$revenue',
-          orderCount: '$orderCount',
-        },
-      },
-    ]);
-
-    // Fill in continuous missing dates with 0 unitsSold
-    const historyMap = new Map();
-    demandAgg.forEach((d) => historyMap.set(d.date, d.unitsSold));
-
-    const completeSeries = [];
-    const curr = new Date(startDate);
-    while (curr <= endDate) {
-      const dateStr = curr.toISOString().split('T')[0];
-      completeSeries.push({
-        productId,
-        date: dateStr,
-        unitsSold: historyMap.get(dateStr) || 0,
-      });
-      curr.setDate(curr.getDate() + 1);
-    }
+    const series = rows.map((r) => ({
+      date: r.date,
+      unitsSold: Number(r.unitsSold),
+      revenue: Number(r.revenue),
+      orderCount: Number(r.orderCount),
+      demand: Number(r.unitsSold),
+    }));
 
     return {
       productId,
-      storeId: storeId || 'All',
-      daysChecked: days,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      totalUnitsSold: demandAgg.reduce((acc, d) => acc + d.unitsSold, 0),
-      dailyDemandSeries: completeSeries,
+      daysRequested: Number(days),
+      totalObservations: rows.length,
+      history: series,
+      dailyDemandSeries: series,
     };
+  }
+
+  /**
+   * GET /api/analytics/products/discount-features
+   */
+  async getDiscountFeatures(storeId = null) {
+    const products = await productRepository.findAllProducts({ storeId });
+    return products.map((p) => {
+      const price = Number(p.price || 0);
+      const costPrice = Number(p.costPrice || (price * 0.7));
+      const profitMarginPct = price > 0 ? Number((((price - costPrice) / price) * 100).toFixed(1)) : 25;
+      const daysToExpiry = Number(p.expiryDays || p.shelfLifeDays || 30);
+      const salesVelocity = Number(p.dailyVelocity || 5);
+
+      return {
+        productId: p.productId,
+        productName: p.name,
+        category: p.category,
+        currentPrice: price,
+        price,
+        costPrice,
+        currentDiscount: Number(p.discount || 0),
+        currentStock: Number(p.stock || 0),
+        stock: Number(p.stock || 0),
+        shelfLifeDays: Number(p.shelfLifeDays || 30),
+        daysToExpiry,
+        isPerishable: Boolean(p.isPerishable),
+        dailySalesVelocity: salesVelocity,
+        salesVelocity,
+        dailyVelocity: salesVelocity,
+        expectedStockoutDays: Number(p.expectedStockoutDays || 10),
+        profitMarginPct,
+      };
+    });
   }
 }
 

@@ -101,7 +101,14 @@ export function PayPalButtonContainer({
               return res.data.orderId;
             } catch (err) {
               setIsProcessing(false);
-              const msg = err.message || 'Error creating PayPal order.';
+              const isFetchErr =
+                err?.message?.includes('fetch') ||
+                err?.message?.includes('NetworkError') ||
+                err?.message?.includes('Failed to fetch') ||
+                err?.status === 0;
+              const msg = isFetchErr
+                ? 'Backend server is not running on http://localhost:5001. Please run "npm run backend:dev" in a terminal.'
+                : (err.message || 'Error creating PayPal order.');
               setPaymentError(msg);
               if (onError) onError(msg);
               throw err;
@@ -127,7 +134,7 @@ export function PayPalButtonContainer({
 
               setIsProcessing(false);
               if (onSuccess) {
-                onSuccess(res.data?.order || res.data);
+                onSuccess(res?.data?.order || res?.data);
               }
             } catch (err) {
               setIsProcessing(false);
@@ -139,9 +146,8 @@ export function PayPalButtonContainer({
           onError: (err) => {
             setIsProcessing(false);
             console.error('[PayPal SDK Error]:', err);
-            const msg = 'PayPal transaction window encountered an error or was closed.';
-            setPaymentError(msg);
-            if (onError) onError(msg);
+            setPaymentError((prev) => prev || (err?.message ? `PayPal Error: ${err.message}` : 'PayPal transaction window encountered an error or was closed.'));
+            if (onError) onError(err);
           },
           onCancel: () => {
             setIsProcessing(false);
@@ -227,11 +233,24 @@ export function PayPalButtonContainer({
 
       {hasValidClientId ? (
         /* Real PayPal Sandbox Buttons Container */
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div id="paypal-button-container" className="min-h-[50px] relative z-10" />
           {!isScriptLoaded && !loadError && (
             <div className="w-full h-11 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-400 font-medium">
               Loading PayPal Sandbox Buttons...
+            </div>
+          )}
+          {paymentError && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleSimulateSandboxSuccess}
+                className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Simulate Instant Approval (${usdAmount} USD)</span>
+              </button>
             </div>
           )}
         </div>

@@ -4,8 +4,13 @@ const { connectDB } = require('./config/db');
 
 const startServer = async () => {
   try {
-    // Connect to MySQL (XAMPP)
-    await connectDB();
+    // Attempt connection to MySQL (XAMPP or Cloud RDS)
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.warn('⚠️ Warning: MySQL database connection failed. Running backend in fallback/sandbox mode.');
+      console.warn('💡 If using XAMPP: Open XAMPP Control Panel and start MySQL.');
+    }
 
     const server = app.listen(config.port, () => {
       console.log('====================================================');

@@ -115,8 +115,11 @@ class PaypalService {
 
     if (!response.ok) {
       const errMsg = data.message || (data.details && data.details[0]?.description) || 'Failed to create PayPal order';
+      console.error('❌ [PayPal Service] Create Order failed:', errMsg, data);
       throw new Error(`PayPal Create Order Error: ${errMsg}`);
     }
+
+    console.log(`✅ [PayPal Service] Order created: ${data.id} | Amount: ${finalAmount} ${finalCurrency} (₹${amountInInr})`);
 
     return {
       orderId: data.id,

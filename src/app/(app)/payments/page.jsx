@@ -204,6 +204,7 @@ export default function PaymentsPage() {
             }}
             options={[
               { value: 'All', label: 'All Payment Channels' },
+              { value: 'PayPal', label: 'PayPal Sandbox' },
               { value: 'UPI', label: 'UPI' },
               { value: 'Card', label: 'Card' },
               { value: 'Transfer', label: 'Bank Transfer' },

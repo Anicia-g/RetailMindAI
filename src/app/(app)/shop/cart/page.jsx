@@ -23,6 +23,7 @@ import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Badge } from '@/components/common/Badge';
 import { orderService } from '@/services/orderService';
+import { PayPalButtonContainer } from '@/components/payment/PayPalButtonContainer';
 
 export default function ShopCartPage() {
   const router = useRouter();
@@ -230,10 +231,11 @@ export default function ShopCartPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
                   Select Payment Option
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { id: 'UPI', label: 'Instant UPI', icon: QrCode },
                     { id: 'Card', label: 'Credit / Debit', icon: CreditCard },
+                    { id: 'PayPal', label: 'PayPal Sandbox', icon: CreditCard },
                     { id: 'COD', label: 'Cash on Delivery', icon: Banknote },
                   ].map((m) => (
                     <button
@@ -335,17 +337,38 @@ export default function ShopCartPage() {
                 </div>
               </div>
 
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={handleCheckout}
-                loading={isCheckingOut}
-                icon={ArrowRight}
-                iconPosition="right"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold shadow-lg shadow-emerald-600/30 cursor-pointer"
-              >
-                Place Order (₹{grandTotal.toLocaleString()})
-              </Button>
+              {paymentMethod === 'PayPal' ? (
+                <PayPalButtonContainer
+                  amount={grandTotal}
+                  items={cart}
+                  deliveryAddress={deliveryAddress}
+                  onSuccess={(order) => {
+                    placeCustomerOrder({
+                      ...(order || {}),
+                      totalAmount: grandTotal,
+                      store: user?.store || 'Indiranagar Flagship (Store 01)',
+                      paymentMethod: 'PayPal Sandbox',
+                      deliveryAddress: deliveryAddress,
+                    });
+                    router.push('/shop/orders');
+                  }}
+                  onError={(errMsg) => {
+                    console.error('PayPal checkout error:', errMsg);
+                  }}
+                />
+              ) : (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={handleCheckout}
+                  loading={isCheckingOut}
+                  icon={ArrowRight}
+                  iconPosition="right"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold shadow-lg shadow-emerald-600/30 cursor-pointer"
+                >
+                  Place Order (₹{grandTotal.toLocaleString()})
+                </Button>
+              )}
 
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-semibold text-center">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />

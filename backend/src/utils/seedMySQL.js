@@ -202,7 +202,8 @@ async function seedDatabase() {
     (2, 'UPI / QR Code (PhonePe, GPay)', 'UPI / QR Code (PhonePe, GPay)', 'UPI', 'UPI', 'Digital', 'Digital', 1, 1, 1, 0, '${now}', 'system', '${now}', 'system', 1),
     (3, 'Credit Card (Visa / MC)', 'Credit Card (Visa / MC)', 'CC', 'CC', 'Card', 'Card', 1, 1, 1, 0, '${now}', 'system', '${now}', 'system', 1),
     (4, 'Debit Card POS Swipe', 'Debit Card POS Swipe', 'DC', 'DC', 'Card', 'Card', 1, 0, 1, 0, '${now}', 'system', '${now}', 'system', 1),
-    (5, 'Smart Wallet Points', 'Smart Wallet Points', 'WALLET', 'WALLET', 'Wallet', 'Wallet', 0, 1, 1, 0, '${now}', 'system', '${now}', 'system', 1)
+    (5, 'Smart Wallet Points', 'Smart Wallet Points', 'WALLET', 'WALLET', 'Wallet', 'Wallet', 0, 1, 1, 0, '${now}', 'system', '${now}', 'system', 1),
+    (6, 'PayPal Sandbox', 'PayPal Sandbox', 'PAYPAL', 'PAYPAL', 'Digital', 'Digital', 1, 1, 0, 0, '${now}', 'system', '${now}', 'system', 1)
   `);
 
   // 11. Insert Suppliers (tbl_Supplier)

@@ -75,15 +75,13 @@ class ProductRepository extends BaseRepository {
         c.txt_Category_Name AS category_name,
         b.txt_Brand_Name AS brand_name,
         u.txt_Unit_Symbol AS unit_symbol,
-        t.dec_Tax_Rate AS tax_pct,
+        5.0 AS tax_pct,
         i.int_Quantity_On_Hand AS current_stock,
-        i.int_Reorder_Level,
         s.txt_Store_Name AS store_name
       FROM tbl_Product p
       LEFT JOIN tbl_Category c ON p.int_Category_Id = c.int_Category_Id
       LEFT JOIN tbl_Brand b ON p.int_Brand_Id = b.int_Brand_Id
       LEFT JOIN tbl_Unit u ON p.int_Unit_Id = u.int_Unit_Id
-      LEFT JOIN tbl_Tax t ON p.int_Tax_Id = t.int_Tax_Id
       LEFT JOIN tbl_Inventory i ON p.int_Product_Id = i.int_Product_Id AND i.int_Store_Id = 1
       LEFT JOIN tbl_Store s ON i.int_Store_Id = s.int_Store_Id
       WHERE (p.int_Product_Id = ? OR p.txt_Product_Code = ? OR p.txt_SKU = ? OR p.txt_Barcode = ?)
@@ -110,15 +108,13 @@ class ProductRepository extends BaseRepository {
         c.txt_Category_Name AS category_name,
         b.txt_Brand_Name AS brand_name,
         u.txt_Unit_Symbol AS unit_symbol,
-        t.dec_Tax_Rate AS tax_pct,
+        5.0 AS tax_pct,
         COALESCE(i.int_Quantity_On_Hand, 0) AS current_stock,
-        COALESCE(i.int_Reorder_Level, 10) AS int_Reorder_Level,
         s.txt_Store_Name AS store_name
       FROM tbl_Product p
       LEFT JOIN tbl_Category c ON p.int_Category_Id = c.int_Category_Id
       LEFT JOIN tbl_Brand b ON p.int_Brand_Id = b.int_Brand_Id
       LEFT JOIN tbl_Unit u ON p.int_Unit_Id = u.int_Unit_Id
-      LEFT JOIN tbl_Tax t ON p.int_Tax_Id = t.int_Tax_Id
       LEFT JOIN tbl_Inventory i ON p.int_Product_Id = i.int_Product_Id AND i.int_Store_Id = ?
       LEFT JOIN tbl_Store s ON i.int_Store_Id = s.int_Store_Id
       WHERE p.bit_IsActive = 1
@@ -155,11 +151,11 @@ class ProductRepository extends BaseRepository {
 
     if (filters.stockStatus && filters.stockStatus !== 'All') {
       if (filters.stockStatus === 'Critical') {
-        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) <= COALESCE(i.int_Reorder_Level, 10) / 2`;
+        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) <= COALESCE(p.int_Reorder_Level, 10) / 2`;
       } else if (filters.stockStatus === 'Low Stock') {
-        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) <= COALESCE(i.int_Reorder_Level, 10)`;
+        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) <= COALESCE(p.int_Reorder_Level, 10)`;
       } else if (filters.stockStatus === 'Healthy') {
-        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) > COALESCE(i.int_Reorder_Level, 10)`;
+        sql += ` AND COALESCE(i.int_Quantity_On_Hand, 0) > COALESCE(p.int_Reorder_Level, 10)`;
       }
     }
 

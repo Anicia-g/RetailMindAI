@@ -157,13 +157,17 @@ class OrderService {
       }
 
       // 3. Create tbl_Payment
+      const isPayPal = String(paymentMethod).toUpperCase().includes('PAYPAL');
+      const resolvedGateway = data.gateway || (isPayPal ? 'PayPal Sandbox Gateway' : 'Razorpay Online Gateway');
+
       await paymentRepository.createPayment(
         {
           orderId: createdOrder.int_Order_Id,
           paymentMethodId,
           amount: subtotal,
           status: 'Completed',
-          gateway: 'Razorpay Online Gateway',
+          gateway: resolvedGateway,
+          transactionRef: data.transactionRef || null,
           receivedByUserId: 1,
           storeId: 1,
           user: customerName,

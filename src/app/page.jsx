@@ -27,7 +27,7 @@ import { Button } from '@/components/common/Button';
 
 export default function LandingPage() {
   const router = useRouter();
-  const { isAuthenticated, role, user } = useAuth();
+  const { isAuthenticated, role, user, switchRole } = useAuth();
 
   const activeWorkspaceRoute = isAuthenticated ? getRoleHomeRoute(role) : '/login';
 
@@ -135,13 +135,17 @@ export default function LandingPage() {
               <span>Login with Role Demo</span>
             </Link>
 
-            <Link
-              href="/login"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-600/40 text-emerald-300 font-bold text-sm transition-all"
+            <button
+              type="button"
+              onClick={() => {
+                switchRole(ROLES.CUSTOMER);
+                router.push('/shop');
+              }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-600/40 text-emerald-300 font-bold text-sm transition-all cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4 text-emerald-400" />
               <span>Shop Supermarket</span>
-            </Link>
+            </button>
           </div>
         </section>
 
@@ -283,13 +287,17 @@ export default function LandingPage() {
                 </ul>
               </div>
 
-              <Link
-                href="/login"
-                className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-xs font-bold text-slate-200 hover:text-white transition-colors"
+              <button
+                type="button"
+                onClick={() => {
+                  switchRole(ROLES.CUSTOMER);
+                  router.push('/shop');
+                }}
+                className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-xs font-bold text-slate-200 hover:text-white transition-colors cursor-pointer"
               >
                 <span>Launch Supermarket</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              </button>
             </div>
           </div>
         </section>

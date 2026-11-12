@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, ShoppingBag, Plus, Minus, Trash2, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useAppSettings } from '@/context/AppSettingsContext';
 import { Button } from '@/components/common/Button';
 
 export function CartDrawer({ isOpen, onClose }) {
+  const router = useRouter();
   const { cart, removeFromCart, updateCartQuantity, clearCart, cartTotal, cartSavings, cartItemCount } = useAuth();
   const { t } = useAppSettings();
   const [checkedOut, setCheckedOut] = useState(false);
@@ -14,12 +16,8 @@ export function CartDrawer({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const handleCheckout = () => {
-    setCheckedOut(true);
-    setTimeout(() => {
-      clearCart();
-      setCheckedOut(false);
-      onClose();
-    }, 1600);
+    onClose();
+    router.push('/shop/cart');
   };
 
   return (

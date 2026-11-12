@@ -24,6 +24,14 @@ const config = {
   whatsappApiKey: process.env.WHATSAPP_API_KEY || '',
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
   mlServiceUrl: process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000',
+  paypal: {
+    mode: process.env.PAYPAL_MODE || 'sandbox',
+    clientId: process.env.PAYPAL_CLIENT_ID || '',
+    clientSecret: process.env.PAYPAL_CLIENT_SECRET || '',
+    apiBase: process.env.PAYPAL_API_BASE || 'https://api-m.sandbox.paypal.com',
+    currency: process.env.PAYPAL_CURRENCY || 'USD',
+    exchangeRateInrToUsd: parseFloat(process.env.PAYPAL_EXCHANGE_RATE_INR_TO_USD || '85'),
+  },
 };
 
 module.exports = config;
